@@ -41,3 +41,42 @@ func TestPathJoinsName(t *testing.T) {
 		t.Fatalf("Path() = %q, want %q", p, want)
 	}
 }
+
+func TestConfigSaveLoadRoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	in := &Config{ClientID: "cid", ClientSecret: "secret", VIN: "5YJ3", Domain: "x.pages.dev", Region: "na"}
+	if err := in.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	p, _ := Path("config.json")
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("config.json mode = %o, want 600", info.Mode().Perm())
+	}
+	got, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if *got != *in {
+		t.Fatalf("round trip mismatch: %+v vs %+v", got, in)
+	}
+}
+
+func TestTokenExpired(t *testing.T) {
+	tok := &Token{ExpiresAt: 1000}
+	if !tok.Expired(1000) {
+		t.Fatalf("expected expired at exactly ExpiresAt")
+	}
+	if !tok.Expired(950) { // within 60s skew window
+		t.Fatalf("expected expired within skew window")
+	}
+	if tok.Expired(900) {
+		t.Fatalf("did not expect expired well before ExpiresAt")
+	}
+}
