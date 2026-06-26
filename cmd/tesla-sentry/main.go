@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"tesla-sentry/internal/config"
@@ -29,7 +30,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tesla-sentry <keygen|register|login|on|off|status>")
+	fmt.Fprintln(os.Stderr, "usage: tesla-sentry <keygen|register|login|on|off|status|afterblow [minutes] [vent]>")
 }
 
 func run(cmd string, args []string) error {
@@ -46,6 +47,8 @@ func run(cmd string, args []string) error {
 		return cmdSet(false)
 	case "status":
 		return cmdStatus()
+	case "afterblow":
+		return cmdAfterBlow(args)
 	default:
 		usage()
 		return fmt.Errorf("unknown command %q", cmd)
@@ -159,6 +162,44 @@ func cmdSet(on bool) error {
 		state = "on"
 	}
 	log.Printf("sentry mode set to %s", state)
+	return nil
+}
+
+const defaultAfterBlowMinutes = 8
+
+// cmdAfterBlow runs the evaporator dry cycle.
+// Args (any order): a positive integer = minutes; the word "vent" = also crack
+// the windows during the cycle. Defaults: 8 minutes, windows closed.
+func cmdAfterBlow(args []string) error {
+	opts := tesla.AfterBlowOptions{Duration: defaultAfterBlowMinutes * time.Minute}
+	for _, a := range args {
+		if a == "vent" {
+			opts.VentWindows = true
+			continue
+		}
+		m, err := strconv.Atoi(a)
+		if err != nil || m <= 0 {
+			return fmt.Errorf("invalid arg %q (expected minutes or \"vent\")", a)
+		}
+		opts.Duration = time.Duration(m) * time.Minute
+	}
+
+	// Timeout must cover the hold duration plus two wake/connect round-trips.
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Duration+commandTimeout)
+	defer cancel()
+	cfg, at, err := loadForCommand(ctx)
+	if err != nil {
+		return err
+	}
+	priv, err := config.Path("private-key.pem")
+	if err != nil {
+		return err
+	}
+	log.Printf("after-blow: max-defrost for %s (vent=%v)", opts.Duration, opts.VentWindows)
+	if err := tesla.AfterBlow(ctx, at, cfg.VIN, priv, opts); err != nil {
+		return err
+	}
+	log.Printf("after-blow: done")
 	return nil
 }
 

@@ -6,6 +6,10 @@
 /tesla-sentry
 tesla-sentry-*
 
+# afterblow 런타임 파일
+afterblow.log
+.afterblow-last
+
 # 민감 정보가 새어 들어오는 것 방지 (실제로는 ~/.config/tesla-sentry/에 보관)
 *.pem
 config.json

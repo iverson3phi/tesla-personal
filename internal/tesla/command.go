@@ -2,16 +2,20 @@ package tesla
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/teslamotors/vehicle-command/pkg/account"
 	"github.com/teslamotors/vehicle-command/pkg/protocol"
+	"github.com/teslamotors/vehicle-command/pkg/vehicle"
 )
 
 const userAgent = "tesla-sentry/1.0"
 
-// SetSentry wakes the vehicle and sets Sentry Mode on/off via a signed command.
-func SetSentry(ctx context.Context, accessToken, vin, privateKeyPath string, on bool) error {
+// withVehicle wakes the vehicle, opens a signed-command session covering all
+// subsystems, runs fn, and always disconnects afterward.
+func withVehicle(ctx context.Context, accessToken, vin, privateKeyPath string, fn func(*vehicle.Vehicle) error) error {
 	key, err := protocol.LoadPrivateKey(privateKeyPath)
 	if err != nil {
 		return fmt.Errorf("load private key: %w", err)
@@ -35,12 +39,77 @@ func SetSentry(ctx context.Context, accessToken, vin, privateKeyPath string, on 
 	if err := car.Connect(ctx); err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
-	// nil domains = all subsystems; Sentry Mode routes to INFOTAINMENT.
+	// nil domains = all subsystems (Sentry routes to INFOTAINMENT, climate to
+	// the car-server domain).
 	if err := car.StartSession(ctx, nil); err != nil {
 		return fmt.Errorf("start session: %w", err)
 	}
-	if err := car.SetSentryMode(ctx, on); err != nil {
-		return fmt.Errorf("set sentry mode: %w", err)
+	return fn(car)
+}
+
+// SetSentry wakes the vehicle and sets Sentry Mode on/off via a signed command.
+func SetSentry(ctx context.Context, accessToken, vin, privateKeyPath string, on bool) error {
+	return withVehicle(ctx, accessToken, vin, privateKeyPath, func(car *vehicle.Vehicle) error {
+		if err := car.SetSentryMode(ctx, on); err != nil {
+			return fmt.Errorf("set sentry mode: %w", err)
+		}
+		return nil
+	})
+}
+
+// AfterBlowOptions configures the evaporator dry cycle.
+type AfterBlowOptions struct {
+	Duration    time.Duration // how long to blow before shutting down
+	VentWindows bool          // crack the windows during the cycle to expel humid air
+}
+
+// AfterBlow dries the A/C evaporator to prevent mold/odor. It runs Max
+// Preconditioning ("Max Defrost": maximum heat + high fan) for the configured
+// duration, then reverts climate to its prior state and turns it off.
+//
+// Max Preconditioning is used instead of setting a fixed temperature because
+// the vehicle-command SDK can only set the cabin setpoint to Hi/Lo (never a
+// specific value), so a plain "set temp to max" would leave the setpoint stuck
+// on "Hi". Max Preconditioning is a toggle that reverts cleanly when disabled.
+func AfterBlow(ctx context.Context, accessToken, vin, privateKeyPath string, opts AfterBlowOptions) error {
+	// Phase 1: start blowing.
+	if err := withVehicle(ctx, accessToken, vin, privateKeyPath, func(car *vehicle.Vehicle) error {
+		if opts.VentWindows {
+			if err := car.VentWindows(ctx); err != nil {
+				return fmt.Errorf("vent windows: %w", err)
+			}
+		}
+		if err := car.SetPreconditioningMax(ctx, true, true); err != nil {
+			return fmt.Errorf("preconditioning max on: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
-	return nil
+
+	// Hold for the dry duration (a fresh signed session is opened for shutdown,
+	// so we do not keep a connection alive here).
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(opts.Duration):
+	}
+
+	// Phase 2: stop. Best-effort — attempt every undo step even if one fails so
+	// we never leave preconditioning running or the windows vented.
+	return withVehicle(ctx, accessToken, vin, privateKeyPath, func(car *vehicle.Vehicle) error {
+		var errs []error
+		if err := car.SetPreconditioningMax(ctx, false, true); err != nil {
+			errs = append(errs, fmt.Errorf("preconditioning max off: %w", err))
+		}
+		if err := car.ClimateOff(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("climate off: %w", err))
+		}
+		if opts.VentWindows {
+			if err := car.CloseWindows(ctx); err != nil {
+				errs = append(errs, fmt.Errorf("close windows: %w", err))
+			}
+		}
+		return errors.Join(errs...)
+	})
 }

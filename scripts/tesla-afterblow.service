@@ -1,0 +1,16 @@
+[Unit]
+Description=Tesla after-blow ntfy listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=allen
+# tesla-sentry는 설정을 ~/.config/tesla-sentry 에서 찾으므로 HOME이 필요하다.
+Environment=HOME=/home/allen
+ExecStart=/home/allen/Projects/tesla/scripts/afterblow-listener.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

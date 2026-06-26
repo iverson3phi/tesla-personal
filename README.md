@@ -2,6 +2,8 @@
 
 Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 실행하면 되고, 크론탭에 등록해 매일 자동으로 동작시킬 수 있습니다.
 
+추가로, 주차(휴대폰 ↔ 차량 블루투스 끊김)를 감지해 에어컨 증발기를 말려 곰팡이·냄새를 예방하는 **애프터블로우(after-blow)** 자동화도 지원합니다 (아래 [애프터블로우 자동화](#애프터블로우-자동화) 참고).
+
 ## 사전 준비물
 
 - **Go 1.23 이상** — `go version`이 `go1.23` 이상을 출력해야 합니다
@@ -238,6 +240,10 @@ sentry mode: false
 tesla-sentry on      # 감시모드 켜기
 tesla-sentry off     # 감시모드 끄기
 tesla-sentry status  # 현재 상태 확인
+
+tesla-sentry afterblow            # 애프터블로우 (기본 8분)
+tesla-sentry afterblow 3          # 3분만 건조
+tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 ```
 
 ---
@@ -258,6 +264,83 @@ crontab -e
 ```
 
 시각은 cron을 실행하는 머신의 로컬 타임존 기준입니다. 실행 로그는 `~/.config/tesla-sentry/sentry.log`에 쌓입니다.
+
+---
+
+## 애프터블로우 자동화
+
+주차 직후 에어컨 증발기에 남은 습기를 말려 곰팡이·냄새를 예방하는 기능입니다. **차량을 깨워 폴링하는 비용/배터리 부담 없이**, 휴대폰이 차량과의 블루투스 연결이 끊기는 순간(= 운전자가 내려서 멀어진 순간)을 트리거로 사용합니다.
+
+### 동작 구조
+
+```
+[휴대폰] 차량 BT 끊김
+   │  (MacroDroid: HTTP POST)
+   ▼
+[ntfy.sh] 무료 pub/sub 중계
+   │  (PC가 outbound로 구독 — 공인 IP 불필요)
+   ▼
+[PC] systemd 데몬 → afterblow 명령 → [차량] 맥스 디포스트로 N분 건조
+```
+
+PC는 **바깥으로 나가는(outbound) 구독 연결만** 사용하므로 공인 IP·포트개방·도메인이 필요 없습니다.
+
+### 건조 방식 (왜 "맥스 디포스트"인가)
+
+Fleet API에는 "에어컨 끄고 송풍만"을 임의 조건에서 켜는 명령이 없고, 사용하는 SDK(`vehicle-command`)는 **온도를 Hi/Lo로만** 설정할 수 있어 임의 온도(예: 22°C) 복원이 불가능합니다. 그래서 `afterblow`는 **맥스 디포스트(`SetPreconditioningMax`)** 를 사용합니다 — 끄면 이전 공조 상태로 **자동 복귀**하므로 설정온도가 "Hi"로 남지 않습니다.
+
+> 참고: 온도와 팬 세기는 Fleet API/SDK가 노출하지 않아 **조절 불가**합니다. 조절 가능한 값은 **건조 시간**(과 창문 환기 on/off)뿐입니다.
+
+### 설치
+
+#### 1. 휴대폰 (MacroDroid)
+
+- **발동**: 연결성 → 블루투스 이벤트 → `기기 연결 해제됨` → 차량 BT 선택
+- **동작**: 연결성 → HTTP 요청 → `POST` / URL `https://ntfy.sh/<당신만의-비밀-토픽>` / 본문 `afterblow`
+- 백그라운드에서 안 죽도록 MacroDroid `알림 표시줄 아이콘`(포그라운드 상주)과 배터리 최적화 예외를 켜는 것을 권장합니다.
+
+> 토픽 이름은 공개 URL이므로 **추측 어려운 랜덤 문자열**로 정하세요.
+
+#### 2. PC (구독 데몬)
+
+`scripts/`의 스크립트 3종을 사용합니다.
+
+```bash
+chmod +x scripts/afterblow-listener.sh scripts/afterblow-run.sh
+sudo cp scripts/tesla-afterblow.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tesla-afterblow
+systemctl status tesla-afterblow --no-pager   # active (running) 확인
+```
+
+| 파일 | 역할 |
+|---|---|
+| `scripts/afterblow-listener.sh` | ntfy 토픽 상시 구독(자동 재접속) → 메시지 수신 시 핸들러 호출 |
+| `scripts/afterblow-run.sh` | 디바운스 후 `tesla-sentry afterblow` 실행 |
+| `scripts/tesla-afterblow.service` | 부팅 자동시작 + 죽으면 자동 재시작 (`HOME` 지정 — 설정 디렉터리 탐색에 필요) |
+
+> 토픽 URL은 `afterblow-listener.sh` 상단의 `TOPIC_URL`을, 서비스의 사용자/경로는 `tesla-afterblow.service`를 본인 환경에 맞게 수정하세요.
+
+### 설정값 (`scripts/afterblow-run.sh` 상단)
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `DURATION_MIN` | `3` | 건조 시간(분). 맥스 디포스트는 따뜻한 강풍이라 3~5분이면 충분하며, 더 길게 해도 효율은 떨어지고 전기만 더 씁니다. |
+| `VENT` | `0` | `1`이면 건조 중 창문을 살짝 열어 습한 공기를 배출(보안·비 주의). |
+| `DEBOUNCE` | `600` | 이 시간(초) 안의 재트리거는 무시 — 블루투스가 순간 끊겼다 붙어도 중복 실행 방지. |
+
+스크립트 수정은 데몬 재시작 없이 다음 트리거부터 자동 반영됩니다(핸들러를 매번 새로 실행하므로). 단, `tesla-afterblow.service` 파일을 바꾼 경우에만 `sudo systemctl daemon-reload && sudo systemctl restart tesla-afterblow`가 필요합니다.
+
+### 테스트
+
+```bash
+# 전체 경로(휴대폰 없이) 검증: 수동으로 메시지 발사
+rm -f .afterblow-last                                  # 디바운스 초기화
+curl -d afterblow https://ntfy.sh/<당신만의-비밀-토픽>
+tail -f afterblow.log                                  # TRIGGERED → command finished 확인
+```
+
+차량 동작까지 확인하려면 차를 보면서 짧게 실행하는 것을 권장합니다: `tesla-sentry afterblow 1`
 
 ---
 
