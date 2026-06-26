@@ -1,1 +1,12 @@
+# 작업 디렉터리 / 도구 상태
 .superpowers/
+.wrangler/
+
+# 빌드 산출물
+/tesla-sentry
+tesla-sentry-*
+
+# 민감 정보가 새어 들어오는 것 방지 (실제로는 ~/.config/tesla-sentry/에 보관)
+*.pem
+config.json
+token.json

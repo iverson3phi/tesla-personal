@@ -7,6 +7,7 @@ Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(S
 - **Go 1.23 이상** — `go version`이 `go1.23` 이상을 출력해야 합니다
 - **테슬라 계정** — 계정에 차량이 등록되어 있어야 합니다
 - **Cloudflare 계정** (무료) — 공개키 파일 하나를 HTTPS로 호스팅하는 데 사용합니다 (아래 3단계에서 설명)
+- **Node.js / npm** — 공개키 배포에 Wrangler CLI를 쓸 경우 필요합니다 (3단계 권장 방법). Ubuntu 기준 `sudo apt-get install -y nodejs npm`
 
 ---
 
@@ -74,11 +75,37 @@ cp ~/.config/tesla-sentry/public-key.pem \
 
 이제 `~/tesla-pages/` 안에 `.well-known/appspecific/com.tesla.3p.public-key.pem` 구조가 생깁니다.
 
-#### 3-3. Pages 프로젝트 생성 + 업로드
+> 먼저 **가입한 이메일을 인증**하세요. 인증 전에는 Pages 프로젝트 생성이 `Your user email must been verified [code: 8000077]` 오류로 막힙니다. 받은편지함의 Cloudflare 인증 메일 링크를 누르거나, 대시보드 상단 배너에서 재전송하세요.
+
+#### 3-3. Pages 프로젝트 생성 + 업로드 (Wrangler CLI — 권장)
+
+웹 대시보드 드래그 업로드는 `.well-known`처럼 점(`.`)으로 시작하는 폴더를 자주 빠뜨립니다(3-5 경고 참고). 우리가 올릴 파일이 정확히 그 점폴더 안에 있으므로, 점폴더를 확실히 포함하는 **Wrangler CLI를 권장**합니다.
+
+```bash
+# 1) 로그인 — 브라우저가 열리면 3-1 계정으로 승인(Allow)
+npx wrangler login
+
+# 2) 프로젝트 생성 (이름이 곧 `이름.pages.dev` 도메인이 됨)
+npx wrangler pages project create 이름 --production-branch=main
+
+# 3) 배포 — 반드시 --branch=main 으로 production에 올림
+npx wrangler pages deploy ~/tesla-pages --project-name=이름 --branch=main
+```
+
+> ⚠️ **`--branch` 주의 (가장 흔한 함정)** — Wrangler는 현재 git 브랜치 이름으로 배포 환경을 정합니다. 기능 브랜치(예: `feat/...`)에서 그냥 배포하면 production이 아니라 `브랜치명.이름.pages.dev` 같은 **미리보기 주소**로 올라가고, 정작 `이름.pages.dev`는 404가 납니다. 테슬라 등록·`config.json`은 production 주소(`이름.pages.dev`)를 쓰므로, **`--branch=main`을 명시**해 production으로 올리세요.
+>
+> 그 외 자주 보는 오류: `Project not found` → 2)의 프로젝트 생성을 먼저 해야 합니다. git 미커밋 경고가 거슬리면 `--commit-dirty=true`를 추가하세요.
+
+<details>
+<summary>대안: 웹 대시보드 드래그 업로드</summary>
+
 1. Cloudflare 대시보드 왼쪽 메뉴 → **Workers & Pages**
 2. **Create** → **Pages** 탭 → **Upload assets** (Direct Upload) 선택
 3. 프로젝트 이름 입력 (이 이름이 곧 `이름.pages.dev` 도메인이 됨) → **Create project**
 4. `~/tesla-pages/` **폴더를 통째로 드래그**해 업로드 → **Deploy site**
+
+이 방법은 점폴더 누락 위험이 있으므로 3-5의 `curl` 검증을 반드시 통과하는지 확인하세요.
+</details>
 
 #### 3-4. 도메인 확인
 배포가 끝나면 `https://이름.pages.dev` 주소가 나옵니다. 이게 이후 단계의 `xxx.pages.dev`이며, 뒤에서 작성할 `config.json`의 `"domain"` 값에도 이 값(`이름.pages.dev`)을 넣습니다.
@@ -106,9 +133,15 @@ curl https://이름.pages.dev/.well-known/appspecific/com.tesla.3p.public-key.pe
 |---|---|
 | Allowed Origin | `https://xxx.pages.dev` |
 | Redirect URI | `https://xxx.pages.dev/callback` |
-| Scopes | `vehicle_device_data vehicle_cmds` |
+| Scopes | `vehicle_device_data` + `vehicle_cmds` |
 
-앱 생성 후 **Client ID**와 **Client Secret**을 복사합니다.
+앱 생성 후 **Client ID**와 **Client Secret**을 복사합니다. (한글 UI에서는 각각 "고객ID", "고객비밀번호"로 표시됩니다. Secret은 생성 직후 한 번만 보이는 경우가 있으니 바로 복사해 두세요.)
+
+**자주 막히는 지점**
+
+- **앱 이름에 "Tesla"를 넣으면 거부됩니다** (상표 보호). 이름은 단순 라벨일 뿐 도메인/도구와 무관하니 `Sentry Scheduler` 같은 이름을 쓰세요.
+- 화면에 **"법인차량 API / Fleet API"**라고 표시돼도 정상입니다. 테슬라 API의 공식 명칭이 "Fleet API"일 뿐, 개인이 자기 차 1대를 쓰는 경우도 동일한 API를 사용합니다.
+- **Scopes 체크박스 ↔ 실제 scope 매핑** — 우리 도구는 `차량정보`(`vehicle_device_data`)와 `차량명령`(`vehicle_cmds`)만 있으면 됩니다. 나머지(프로필정보/차량위치/차량충전관리/에너지제품정보·명령)는 불필요합니다. `openid`·`offline_access`는 이 체크박스 목록에 없고 표준 OAuth scope로 자동 부여되므로 따로 챙길 필요가 없습니다.
 
 ---
 
@@ -162,6 +195,8 @@ Paste code:
 ```
 
 URL을 브라우저에서 열어 요청된 권한을 승인하고, 테슬라가 `https://xxx.pages.dev/callback?code=...`로 리디렉트하면 URL 표시줄에서 `code` 값을 복사해 프롬프트에 붙여넣습니다.
+
+> 리디렉트된 페이지가 **"페이지를 찾을 수 없음"(404)**으로 보이는 것은 **정상**입니다. 우리는 `/callback` 페이지를 두지 않으며, 주소창의 `code` 값만 필요합니다. URL이 `...?code=값&issuer=...&state=...` 형태라면 **`code=` 와 그다음 `&` 사이의 값만** 복사하세요. 인증 코드는 몇 분 내 만료되므로 바로 붙여넣고, 늦었으면 `tesla-sentry login`을 다시 실행하세요.
 
 토큰은 `~/.config/tesla-sentry/token.json`(0600)에 저장됩니다.
 
