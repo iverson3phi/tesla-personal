@@ -22,7 +22,10 @@ func SentryState(ctx context.Context, accessToken, vin string) (bool, error) {
 		return false, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("read vehicle_data: %w", err)
+	}
 	if resp.StatusCode/100 != 2 {
 		return false, fmt.Errorf("vehicle_data %s: %s", resp.Status, string(body))
 	}

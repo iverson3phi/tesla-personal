@@ -16,6 +16,9 @@ func TestSentryStateParsesField(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer AT" {
 			t.Errorf("auth = %q", r.Header.Get("Authorization"))
 		}
+		if r.URL.Query().Get("endpoints") != "vehicle_state" {
+			t.Errorf("endpoints query = %q, want vehicle_state", r.URL.Query().Get("endpoints"))
+		}
 		_, _ = w.Write([]byte(`{"response":{"vehicle_state":{"sentry_mode":true}}}`))
 	}))
 	defer srv.Close()
