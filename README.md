@@ -1,72 +1,72 @@
 # tesla-sentry
 
-Automatically toggles Tesla Sentry Mode on a schedule using the Tesla Fleet API.
+Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다.
 
-## Prerequisites
+## 사전 준비물
 
-- **Go 1.23+** — `go version` must show `go1.23` or later
-- **Tesla account** with a vehicle on your account
-- **Cloudflare Pages site** (free tier) — used to host the public key at a stable `https://xxx.pages.dev` URL
+- **Go 1.23 이상** — `go version`이 `go1.23` 이상을 출력해야 합니다
+- **테슬라 계정** — 계정에 차량이 등록되어 있어야 합니다
+- **Cloudflare Pages 사이트** (무료 플랜) — 공개키를 안정적인 `https://xxx.pages.dev` URL로 호스팅하는 데 사용합니다
 
-## Build
+## 빌드
 
 ```bash
 go build -o tesla-sentry ./cmd/tesla-sentry
 sudo install tesla-sentry /usr/local/bin/
 ```
 
-## One-time Setup
+## 일회성 설정
 
-Work through these steps in order. Each step depends on the previous one.
+아래 단계를 순서대로 진행합니다. 각 단계는 이전 단계에 의존합니다.
 
-### 1. Generate the key pair
+### 1. 키 쌍 생성
 
 ```bash
 tesla-sentry keygen
 ```
 
-This writes two files to `~/.config/tesla-sentry/`:
+`~/.config/tesla-sentry/`에 두 개의 파일을 생성합니다:
 
-| File | Permissions | Purpose |
+| 파일 | 권한 | 용도 |
 |---|---|---|
-| `private-key.pem` | 0600 | Signs vehicle commands |
-| `public-key.pem` | 0644 | Hosted publicly so Tesla can verify your commands |
+| `private-key.pem` | 0600 | 차량 명령에 서명 |
+| `public-key.pem` | 0644 | 공개적으로 호스팅하여 테슬라가 명령을 검증 |
 
-It also prints the required hosting path:
+또한 호스팅에 필요한 경로를 출력합니다:
 
 ```
 Host the PUBLIC key at: https://<domain>/.well-known/appspecific/com.tesla.3p.public-key.pem
 ```
 
-### 2. Deploy the public key to Cloudflare Pages
+### 2. Cloudflare Pages에 공개키 배포
 
-Upload `~/.config/tesla-sentry/public-key.pem` to your Cloudflare Pages project at this exact path:
+`~/.config/tesla-sentry/public-key.pem`을 Cloudflare Pages 프로젝트의 정확히 다음 경로에 업로드합니다:
 
 ```
 /.well-known/appspecific/com.tesla.3p.public-key.pem
 ```
 
-Note your Pages domain — it looks like `xxx.pages.dev`. You will use it throughout the remaining steps.
+Pages 도메인을 기록해 두세요 — `xxx.pages.dev` 형태입니다. 이후 모든 단계에서 사용합니다.
 
-Verify the file is accessible:
+파일이 접근 가능한지 확인합니다:
 
 ```bash
 curl https://xxx.pages.dev/.well-known/appspecific/com.tesla.3p.public-key.pem
 ```
 
-### 3. Create the Tesla developer app
+### 3. 테슬라 개발자 앱 생성
 
-Go to [developer.tesla.com](https://developer.tesla.com) and create an application with these settings:
+[developer.tesla.com](https://developer.tesla.com)에 접속해 다음 설정으로 애플리케이션을 생성합니다:
 
-| Setting | Value |
+| 설정 | 값 |
 |---|---|
 | Allowed Origin | `https://xxx.pages.dev` |
 | Redirect URI | `https://xxx.pages.dev/callback` |
 | Scopes | `vehicle_device_data vehicle_cmds` |
 
-After creating the app, copy the **Client ID** and **Client Secret**.
+앱 생성 후 **Client ID**와 **Client Secret**을 복사합니다.
 
-### 4. Write config.json
+### 4. config.json 작성
 
 ```bash
 cat > ~/.config/tesla-sentry/config.json << 'EOF'
@@ -81,26 +81,26 @@ EOF
 chmod 600 ~/.config/tesla-sentry/config.json
 ```
 
-> `region` must be `na` for North America. The Fleet API base URL is
-> `https://fleet-api.prd.na.vn.cloud.tesla.com`.
+> `region`은 북미/APAC(한국 포함)의 경우 반드시 `na`여야 합니다. Fleet API 기본 URL은
+> `https://fleet-api.prd.na.vn.cloud.tesla.com`입니다.
 
-Config directory honors `XDG_CONFIG_HOME`; defaults to `~/.config/tesla-sentry/`.
+설정 디렉터리는 `XDG_CONFIG_HOME`을 따르며, 기본값은 `~/.config/tesla-sentry/`입니다.
 
-### 5. Register your domain with Tesla
+### 5. 테슬라에 도메인 등록
 
 ```bash
 tesla-sentry register
 ```
 
-This obtains a partner token and calls the Fleet API to register your `xxx.pages.dev` domain. Tesla uses this to look up your public key.
+파트너 토큰을 발급받아 Fleet API를 호출하여 `xxx.pages.dev` 도메인을 등록합니다. 테슬라는 이 정보로 당신의 공개키를 조회합니다.
 
-### 6. Log in (user OAuth)
+### 6. 로그인 (사용자 OAuth)
 
 ```bash
 tesla-sentry login
 ```
 
-The command prints an authorization URL:
+명령이 인증 URL을 출력합니다:
 
 ```
 1. Open this URL in a browser and approve:
@@ -109,57 +109,57 @@ The command prints an authorization URL:
 Paste code:
 ```
 
-Open the URL, approve the requested permissions, and when Tesla redirects to `https://xxx.pages.dev/callback?code=...`, copy the `code` value from the URL bar and paste it at the prompt.
+URL을 열어 요청된 권한을 승인하고, 테슬라가 `https://xxx.pages.dev/callback?code=...`로 리디렉트하면 URL 표시줄에서 `code` 값을 복사해 프롬프트에 붙여넣습니다.
 
-Tokens are saved to `~/.config/tesla-sentry/token.json` (0600).
+토큰은 `~/.config/tesla-sentry/token.json`(0600)에 저장됩니다.
 
-### 7. Add the virtual key in the Tesla app
+### 7. 테슬라 앱에서 virtual key 등록
 
-On your phone, open:
+휴대폰에서 다음 주소를 엽니다:
 
 ```
 https://tesla.com/_ak/xxx.pages.dev
 ```
 
-The Tesla app will prompt you to add a virtual key for this application. Accept. Without this step, signed vehicle commands will be rejected.
+테슬라 앱이 이 애플리케이션의 virtual key를 추가할지 묻습니다. 수락하세요. 이 단계를 거치지 않으면 서명된 차량 명령이 거부됩니다.
 
-### 8. Verify the setup
+### 8. 설정 확인
 
 ```bash
 tesla-sentry status
 ```
 
-Expected output:
+예상 출력:
 
 ```
 sentry mode: false
 ```
 
-(or `true` if sentry mode is already on). Any error at this point points to a missing step above.
+(감시모드가 이미 켜져 있으면 `true`). 이 시점에 오류가 나면 위 단계 중 빠진 것이 있다는 뜻입니다.
 
 ## Crontab
 
-Enable sentry mode every night at 22:00 and disable it every morning at 07:00:
+매일 밤 22:00에 감시모드를 켜고 매일 아침 07:00에 끕니다:
 
 ```bash
 crontab -e
 ```
 
-Add these two lines:
+다음 두 줄을 추가합니다:
 
 ```cron
 0 22 * * *  /usr/local/bin/tesla-sentry on  >> ~/.config/tesla-sentry/sentry.log 2>&1
 0 7  * * *  /usr/local/bin/tesla-sentry off >> ~/.config/tesla-sentry/sentry.log 2>&1
 ```
 
-Times are in the local timezone of the machine running cron.
+시각은 cron을 실행하는 머신의 로컬 타임존 기준입니다.
 
-## Troubleshooting
+## 문제 해결
 
-**Token expired** — `tesla-sentry` refreshes access tokens automatically, but if the refresh token itself expires (typically after 90 days of inactivity) you will see an authentication error. Fix: re-run `tesla-sentry login`.
+**토큰 만료** — `tesla-sentry`는 access token을 자동으로 갱신하지만, refresh token 자체가 만료되면(보통 90일간 미사용 시) 인증 오류가 발생합니다. 해결: `tesla-sentry login`을 다시 실행하세요.
 
-**`vehicle offline`** — The command sends a wake signal and retries until the vehicle comes online. This can take up to the 3-minute command timeout. No action needed; the car will usually respond within that window.
+**`vehicle offline`** — 명령은 wake 신호를 보내고 차량이 온라인이 될 때까지 재시도합니다. 최대 3분의 명령 타임아웃까지 걸릴 수 있습니다. 별다른 조치는 필요 없으며, 보통 그 시간 안에 차량이 응답합니다.
 
-**`tesla-sentry status` requires the vehicle to be online** — unlike `on`/`off` (which send a wake signal and retry), `status` does not wake the car. If the vehicle is asleep you will see a "vehicle offline" or HTTP 408 error. Wake the car via the Tesla app or run `tesla-sentry on`/`off` first, then check status.
+**`tesla-sentry status`는 차량이 온라인이어야 합니다** — `on`/`off`(wake 신호를 보내고 재시도함)와 달리 `status`는 차량을 깨우지 않습니다. 차량이 잠들어 있으면 "vehicle offline" 또는 HTTP 408 오류가 표시됩니다. 테슬라 앱으로 차량을 깨우거나 `tesla-sentry on`/`off`를 먼저 실행한 뒤 상태를 확인하세요.
 
-**Refresh token rotation** — Tesla rotates the refresh token on each use. The new token is written back to `token.json` automatically. Never copy or restore an old `token.json`; it will invalidate the current session.
+**Refresh token 회전** — 테슬라는 사용할 때마다 refresh token을 회전시킵니다. 새 토큰은 `token.json`에 자동으로 다시 기록됩니다. 예전 `token.json`을 복사하거나 복원하지 마세요 — 현재 세션이 무효화됩니다.
