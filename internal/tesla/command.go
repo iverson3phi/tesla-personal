@@ -13,6 +13,43 @@ import (
 
 const userAgent = "tesla-sentry/1.0"
 
+const (
+	// onlinePollInterval is how long to wait between vehicle-summary polls while
+	// waiting for a wake to complete. Tesla cars typically come online within
+	// 15-30s, so 5s catches the transition without hammering the API.
+	onlinePollInterval = 5 * time.Second
+	// onlinePollMax caps the number of summary polls (~90s ceiling at the above
+	// interval). This covers essentially all real wakes while bounding API usage
+	// if the car never becomes reachable. The command ctx is the harder bound.
+	onlinePollMax = 18
+)
+
+// waitOnline polls the lightweight vehicle-summary endpoint until the car
+// reports "online". car.Wakeup only guarantees the wake_up request was
+// accepted (a sleeping car still answers "asleep"), so without this the signed
+// session below races the wake and fails with "vehicle unavailable". Read
+// errors and not-yet-online states simply trigger another poll; ctx
+// cancellation/timeout is surfaced.
+func waitOnline(ctx context.Context, accessToken, vin string) error {
+	for attempt := 0; ; attempt++ {
+		state, err := VehicleState(ctx, accessToken, vin)
+		if err == nil && state == "online" {
+			return nil
+		}
+		if attempt+1 >= onlinePollMax {
+			if err != nil {
+				return fmt.Errorf("vehicle not online after %d polls: %w", onlinePollMax, err)
+			}
+			return fmt.Errorf("vehicle not online after %d polls (last state %q)", onlinePollMax, state)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(onlinePollInterval):
+		}
+	}
+}
+
 // withVehicle wakes the vehicle, opens a signed-command session covering all
 // subsystems, runs fn, and always disconnects afterward.
 func withVehicle(ctx context.Context, accessToken, vin, privateKeyPath string, fn func(*vehicle.Vehicle) error) error {
@@ -32,9 +69,14 @@ func withVehicle(ctx context.Context, accessToken, vin, privateKeyPath string, f
 	}
 	defer car.Disconnect()
 
-	// Wakeup blocks until the car reports "online" (or ctx expires).
+	// Wakeup only confirms the wake_up request was accepted; a sleeping car may
+	// still be "asleep" when it returns. Poll the summary endpoint until the car
+	// is genuinely online so the signed session below does not race the wake.
 	if err := car.Wakeup(ctx); err != nil {
 		return fmt.Errorf("wake vehicle: %w", err)
+	}
+	if err := waitOnline(ctx, accessToken, vin); err != nil {
+		return fmt.Errorf("wait online: %w", err)
 	}
 	if err := car.Connect(ctx); err != nil {
 		return fmt.Errorf("connect: %w", err)

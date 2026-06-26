@@ -8,6 +8,44 @@ import (
 	"testing"
 )
 
+func TestVehicleStateParsesState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/1/vehicles/VIN123" {
+			t.Errorf("path = %q, want /api/1/vehicles/VIN123", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer AT" {
+			t.Errorf("auth = %q", r.Header.Get("Authorization"))
+		}
+		_, _ = w.Write([]byte(`{"response":{"state":"online"}}`))
+	}))
+	defer srv.Close()
+	old := BaseURL
+	BaseURL = srv.URL
+	defer func() { BaseURL = old }()
+
+	state, err := VehicleState(context.Background(), "AT", "VIN123")
+	if err != nil {
+		t.Fatalf("VehicleState: %v", err)
+	}
+	if state != "online" {
+		t.Fatalf("state = %q, want online", state)
+	}
+}
+
+func TestVehicleStateErrorsOnNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(408)
+		_, _ = w.Write([]byte(`{"error":"vehicle offline"}`))
+	}))
+	defer srv.Close()
+	old := BaseURL
+	BaseURL = srv.URL
+	defer func() { BaseURL = old }()
+	if _, err := VehicleState(context.Background(), "AT", "VIN123"); err == nil {
+		t.Fatal("expected error on 408")
+	}
+}
+
 func TestSentryStateParsesField(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "/api/1/vehicles/VIN123/vehicle_data") {
