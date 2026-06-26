@@ -31,8 +31,11 @@ func RegisterPartner(ctx context.Context, partnerToken, domain string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	rb, _ := io.ReadAll(resp.Body)
+	rb, readErr := io.ReadAll(resp.Body)
 	if resp.StatusCode/100 != 2 {
+		if readErr != nil {
+			return fmt.Errorf("partner_accounts %s: <response body unreadable: %v>", resp.Status, readErr)
+		}
 		return fmt.Errorf("partner_accounts %s: %s", resp.Status, string(rb))
 	}
 	return nil
