@@ -65,11 +65,58 @@ func TestPartnerTokenSendsClientCredentials(t *testing.T) {
 	if gotBody.Get("grant_type") != "client_credentials" {
 		t.Errorf("grant_type = %q", gotBody.Get("grant_type"))
 	}
+	if gotBody.Get("client_id") != "cid" {
+		t.Errorf("client_id = %q", gotBody.Get("client_id"))
+	}
 	if gotBody.Get("client_secret") != "sec" {
 		t.Errorf("client_secret = %q", gotBody.Get("client_secret"))
 	}
+	if gotBody.Get("scope") != "openid vehicle_cmds" {
+		t.Errorf("scope = %q", gotBody.Get("scope"))
+	}
 	if gotBody.Get("audience") != "https://aud" {
 		t.Errorf("audience = %q", gotBody.Get("audience"))
+	}
+}
+
+func TestExchangeSendsCorrectBody(t *testing.T) {
+	var gotBody url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ct := r.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
+			t.Errorf("content-type = %q", ct)
+		}
+		_ = r.ParseForm()
+		gotBody = r.PostForm
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"AT","refresh_token":"RT","expires_in":300}`))
+	}))
+	defer srv.Close()
+
+	e := Endpoints{TokenURL: srv.URL, Audience: "https://aud"}
+	got, err := e.Exchange(context.Background(), "cid", "sec", "thecode", "https://x.pages.dev/callback")
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if got.AccessToken != "AT" {
+		t.Fatalf("access_token = %q", got.AccessToken)
+	}
+	if gotBody.Get("grant_type") != "authorization_code" {
+		t.Errorf("grant_type = %q", gotBody.Get("grant_type"))
+	}
+	if gotBody.Get("client_id") != "cid" {
+		t.Errorf("client_id = %q", gotBody.Get("client_id"))
+	}
+	if gotBody.Get("client_secret") != "sec" {
+		t.Errorf("client_secret = %q", gotBody.Get("client_secret"))
+	}
+	if gotBody.Get("code") != "thecode" {
+		t.Errorf("code = %q", gotBody.Get("code"))
+	}
+	if gotBody.Get("audience") != "https://aud" {
+		t.Errorf("audience = %q", gotBody.Get("audience"))
+	}
+	if gotBody.Get("redirect_uri") != "https://x.pages.dev/callback" {
+		t.Errorf("redirect_uri = %q", gotBody.Get("redirect_uri"))
 	}
 }
 
