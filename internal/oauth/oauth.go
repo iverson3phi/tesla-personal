@@ -16,9 +16,9 @@ var HTTPClient = http.DefaultClient
 
 // Endpoints holds region-specific OAuth URLs.
 type Endpoints struct {
-	TokenURL     string
+	TokenURL      string
 	AuthorizeBase string
-	Audience     string
+	Audience      string
 }
 
 // NA returns the North America endpoints (verbatim Global Constraints).
@@ -48,7 +48,10 @@ func (e Endpoints) post(ctx context.Context, form url.Values) (*TokenResponse, e
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read token response: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("token endpoint %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}

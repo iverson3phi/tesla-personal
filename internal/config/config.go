@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -76,11 +77,14 @@ func readJSON(name string, v any) error {
 	return json.Unmarshal(b, v)
 }
 
-func (c *Config) Save() error    { return writeJSON("config.json", c) }
+func (c *Config) Save() error { return writeJSON("config.json", c) }
 func LoadConfig() (*Config, error) {
 	var c Config
 	if err := readJSON("config.json", &c); err != nil {
 		return nil, err
+	}
+	if c.Region != "na" {
+		return nil, fmt.Errorf("unsupported region %q: only \"na\" is supported", c.Region)
 	}
 	return &c, nil
 }

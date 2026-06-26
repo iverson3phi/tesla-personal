@@ -160,4 +160,6 @@ Times are in the local timezone of the machine running cron.
 
 **`vehicle offline`** — The command sends a wake signal and retries until the vehicle comes online. This can take up to the 3-minute command timeout. No action needed; the car will usually respond within that window.
 
+**`tesla-sentry status` requires the vehicle to be online** — unlike `on`/`off` (which send a wake signal and retry), `status` does not wake the car. If the vehicle is asleep you will see a "vehicle offline" or HTTP 408 error. Wake the car via the Tesla app or run `tesla-sentry on`/`off` first, then check status.
+
 **Refresh token rotation** — Tesla rotates the refresh token on each use. The new token is written back to `token.json` automatically. Never copy or restore an old `token.json`; it will invalidate the current session.

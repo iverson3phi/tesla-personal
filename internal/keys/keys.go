@@ -25,7 +25,7 @@ func Generate(privPath, pubPath string) error {
 	}
 	privPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privDER})
 	if err := os.WriteFile(privPath, privPEM, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write private key: %w", err)
 	}
 
 	pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
@@ -34,7 +34,7 @@ func Generate(privPath, pubPath string) error {
 	}
 	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
 	if err := os.WriteFile(pubPath, pubPEM, 0o644); err != nil {
-		return err
+		return fmt.Errorf("write public key: %w", err)
 	}
 
 	return nil

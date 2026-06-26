@@ -39,4 +39,7 @@ func TestGenerateProducesLoadableP256Pair(t *testing.T) {
 	if _, err := x509.ParsePKIXPublicKey(block.Bytes); err != nil {
 		t.Fatalf("ParsePKIXPublicKey: %v", err)
 	}
+	if info, _ := os.Stat(pub); info.Mode().Perm() != 0o644 {
+		t.Fatalf("public key mode = %o, want 644", info.Mode().Perm())
+	}
 }
