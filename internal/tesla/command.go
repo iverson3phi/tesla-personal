@@ -155,3 +155,20 @@ func AfterBlow(ctx context.Context, accessToken, vin, privateKeyPath string, opt
 		return errors.Join(errs...)
 	})
 }
+
+// AfterBlowCancel는 진행 중인 애프터블로우를 즉시 되돌린다: 공조를 끄고 창문을
+// 닫는다. 실행 중이던 afterblow 프로세스를 죽이지 않는 독립 명령이므로, 남은
+// 프로세스가 나중에 같은 종료 단계를 또 수행해도 무해(이미 꺼짐/닫힘)하다.
+// 모든 단계를 best-effort로 시도하고 발생한 에러를 합쳐 반환한다.
+func AfterBlowCancel(ctx context.Context, accessToken, vin, privateKeyPath string) error {
+	return withVehicle(ctx, accessToken, vin, privateKeyPath, func(car *vehicle.Vehicle) error {
+		var errs []error
+		if err := car.ClimateOff(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("climate off: %w", err))
+		}
+		if err := car.CloseWindows(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("close windows: %w", err))
+		}
+		return errors.Join(errs...)
+	})
+}

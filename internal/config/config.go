@@ -44,6 +44,9 @@ type Config struct {
 	VIN          string `json:"vin"`
 	Domain       string `json:"domain"`
 	Region       string `json:"region"`
+	// 감시모드 상태를 Worker KV에 보고할 엔드포인트/토큰. 둘 중 하나라도 비면 보고 생략.
+	SentryStateURL   string `json:"sentry_state_url,omitempty"`
+	SentryStateToken string `json:"sentry_state_token,omitempty"`
 }
 
 // Token is the cached OAuth state; refresh rotates RefreshToken.

@@ -30,7 +30,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tesla-sentry <keygen|register|login|on|off|status|afterblow [minutes] [vent]>")
+	fmt.Fprintln(os.Stderr, "usage: tesla-sentry <keygen|register|login|on|off|status|afterblow [minutes] [vent]|afterblow-cancel>")
 }
 
 func run(cmd string, args []string) error {
@@ -49,6 +49,8 @@ func run(cmd string, args []string) error {
 		return cmdStatus()
 	case "afterblow":
 		return cmdAfterBlow(args)
+	case "afterblow-cancel":
+		return cmdAfterBlowCancel()
 	default:
 		usage()
 		return fmt.Errorf("unknown command %q", cmd)
@@ -143,6 +145,17 @@ func loadForCommand(ctx context.Context) (*config.Config, string, error) {
 	return cfg, at, nil
 }
 
+// reportSentryState는 감시모드 상태를 best-effort로 Worker에 보고한다.
+// URL/토큰 미설정이면 조용히 생략하고, 실패해도 명령 결과에 영향을 주지 않는다.
+func reportSentryState(ctx context.Context, cfg *config.Config, state, source string) {
+	if cfg.SentryStateURL == "" || cfg.SentryStateToken == "" {
+		return
+	}
+	if err := tesla.ReportSentryState(ctx, cfg.SentryStateURL, cfg.SentryStateToken, state, source); err != nil {
+		log.Printf("report sentry state (%s/%s): %v", state, source, err)
+	}
+}
+
 func cmdSet(on bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
@@ -162,6 +175,7 @@ func cmdSet(on bool) error {
 		state = "on"
 	}
 	log.Printf("sentry mode set to %s", state)
+	reportSentryState(ctx, cfg, state, "command")
 	return nil
 }
 
@@ -203,6 +217,26 @@ func cmdAfterBlow(args []string) error {
 	return nil
 }
 
+// cmdAfterBlowCancel은 진행 중인 애프터블로우를 즉시 되돌린다(공조off+창문닫기).
+func cmdAfterBlowCancel() error {
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	cfg, at, err := loadForCommand(ctx)
+	if err != nil {
+		return err
+	}
+	priv, err := config.Path("private-key.pem")
+	if err != nil {
+		return err
+	}
+	log.Printf("after-blow: cancel (climate off + close windows)")
+	if err := tesla.AfterBlowCancel(ctx, at, cfg.VIN, priv); err != nil {
+		return err
+	}
+	log.Printf("after-blow: cancel done")
+	return nil
+}
+
 func cmdStatus() error {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
@@ -215,5 +249,10 @@ func cmdStatus() error {
 		return err
 	}
 	fmt.Printf("sentry mode: %v\n", on)
+	state := "off"
+	if on {
+		state = "on"
+	}
+	reportSentryState(ctx, cfg, state, "status")
 	return nil
 }

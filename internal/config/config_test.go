@@ -68,6 +68,25 @@ func TestConfigSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConfigStateFieldsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	c := &Config{
+		ClientID: "id", ClientSecret: "sec", VIN: "VIN", Domain: "d", Region: "na",
+		SentryStateURL: "https://w.example/api/sentry-state", SentryStateToken: "tok",
+	}
+	if err := c.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got.SentryStateURL != c.SentryStateURL || got.SentryStateToken != c.SentryStateToken {
+		t.Fatalf("state fields not round-tripped: %+v", got)
+	}
+}
+
 func TestTokenExpired(t *testing.T) {
 	tok := &Token{ExpiresAt: 1000}
 	if !tok.Expired(1000) {
