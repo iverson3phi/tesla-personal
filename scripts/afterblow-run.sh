@@ -11,9 +11,7 @@ ROOT="$(cd "$DIR/.." && pwd)"
 source "$DIR/afterblow-lib.sh"
 
 # ── 설정 (환경변수로 덮어쓸 수 있음) ──────────────────────────────
-DEBOUNCE="${DEBOUNCE:-60}" # 초. 이 시간 안의 재트리거는 무시.
 LOG="${LOG:-$ROOT/afterblow.log}"
-STAMP="${STAMP:-$ROOT/.afterblow-last}"
 # ──────────────────────────────────────────────────────────────────
 
 log() { printf '%s [run] %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
@@ -30,16 +28,6 @@ if [ -n "${AFTERBLOW_DRY_RUN:-}" ]; then
 	printf 'afterblow %s\n' "${args[*]}"
 	exit 0
 fi
-
-now=$(date +%s)
-if [ -f "$STAMP" ]; then
-	last=$(cat "$STAMP" 2>/dev/null || echo 0)
-	if [ $((now - last)) -lt "$DEBOUNCE" ]; then
-		log "debounced (within ${DEBOUNCE}s) — skip"
-		exit 0
-	fi
-fi
-echo "$now" >"$STAMP"
 
 log "AFTERBLOW TRIGGERED (${minutes}min, vent=${vent:-off})"
 
