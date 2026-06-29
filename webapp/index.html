@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>애프터블로우</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>애프터블로우</h1>
+
+    <section class="row">
+      <span class="label">건조 시간</span>
+      <span id="minutesLabel" class="value">3분</span>
+    </section>
+    <input id="minutes" type="range" min="1" max="10" step="1" value="3" class="slider">
+
+    <section class="row toggle">
+      <span class="label">창문 살짝 열기</span>
+      <label class="switch">
+        <input id="vent" type="checkbox" checked>
+        <span class="track"></span>
+      </label>
+    </section>
+
+    <button id="start" class="start">건조 시작</button>
+
+    <p id="status" class="status"></p>
+    <p class="note">'전송됨'은 메시지 전송 성공이며, 차량 동작 확인은 아닙니다.</p>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

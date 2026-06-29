@@ -1,22 +1,35 @@
 #!/usr/bin/env bash
 # afterblow 트리거 핸들러.
-# - 디바운스: 짧은 시간 안에 중복 트리거되면 무시한다(BT 순간 끊김 대비).
-# - STEP 2: 지금은 로그만 남긴다(전체 경로 검증용).
-# - STEP 3: 아래 주석을 풀어 실제 히터MAX 명령을 실행한다.
+# - 인자로 받은 분/환기로 tesla-sentry afterblow 를 실행한다.
+# - 디바운스: 짧은 시간 안의 중복 트리거는 무시한다(실수 더블탭 대비).
+# - AFTERBLOW_DRY_RUN=1 이면 실제 명령 대신 해석된 인자를 출력하고 종료(테스트용).
 set -uo pipefail
-
-# ── 설정 ──────────────────────────────────────────────────────────
-DURATION_MIN=3 # 건조 시간(분). 원하는 값으로 조절.
-VENT=1         # 1이면 건조 중 창문 살짝 열기(환기). 보안/비 주의.
-DEBOUNCE=600   # 초. 이 시간 안의 재트리거는 무시(BT 순간 끊김 대비).
-# ──────────────────────────────────────────────────────────────────
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"
-LOG="$ROOT/afterblow.log"
-STAMP="$ROOT/.afterblow-last"
+# shellcheck source=afterblow-lib.sh
+source "$DIR/afterblow-lib.sh"
+
+# ── 설정 (환경변수로 덮어쓸 수 있음) ──────────────────────────────
+DEBOUNCE="${DEBOUNCE:-60}" # 초. 이 시간 안의 재트리거는 무시.
+LOG="${LOG:-$ROOT/afterblow.log}"
+STAMP="${STAMP:-$ROOT/.afterblow-last}"
+# ──────────────────────────────────────────────────────────────────
 
 log() { printf '%s [run] %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
+
+# 입력 해석(공개 토픽 → 신뢰 불가 입력이므로 재검증).
+minutes="$(ab_sanitize_minutes "${1:-}")"
+vent=""
+for a in "$@"; do [ "$a" = "vent" ] && vent="vent"; done
+
+args=("$minutes")
+[ -n "$vent" ] && args+=("vent")
+
+if [ -n "${AFTERBLOW_DRY_RUN:-}" ]; then
+	printf 'afterblow %s\n' "${args[*]}"
+	exit 0
+fi
 
 now=$(date +%s)
 if [ -f "$STAMP" ]; then
@@ -28,10 +41,7 @@ if [ -f "$STAMP" ]; then
 fi
 echo "$now" >"$STAMP"
 
-log "AFTERBLOW TRIGGERED (${DURATION_MIN}min, vent=${VENT})"
-
-args=("$DURATION_MIN")
-[ "$VENT" = "1" ] && args+=("vent")
+log "AFTERBLOW TRIGGERED (${minutes}min, vent=${vent:-off})"
 
 "$ROOT/tesla-sentry" afterblow "${args[@]}" >>"$LOG" 2>&1
 rc=$?

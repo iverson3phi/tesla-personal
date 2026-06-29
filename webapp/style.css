@@ -1,0 +1,77 @@
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --fg: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #22c55e;
+  --accent-press: #16a34a;
+  --err: #ef4444;
+  --ok: #22c55e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--card);
+  border-radius: 20px;
+  padding: 28px 24px 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+}
+
+h1 { margin: 0 0 24px; font-size: 1.5rem; text-align: center; }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.label { color: var(--muted); font-size: 1rem; }
+.value { font-size: 1.6rem; font-weight: 700; }
+
+.slider { width: 100%; margin: 4px 0 24px; accent-color: var(--accent); height: 32px; }
+
+.toggle { margin: 8px 0 28px; }
+
+.switch { position: relative; display: inline-block; width: 56px; height: 32px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.track {
+  position: absolute; inset: 0; cursor: pointer;
+  background: #475569; border-radius: 999px; transition: .2s;
+}
+.track::before {
+  content: ""; position: absolute; height: 26px; width: 26px;
+  left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s;
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::before { transform: translateX(24px); }
+
+.start {
+  width: 100%; padding: 18px;
+  font-size: 1.25rem; font-weight: 700; color: #fff;
+  background: var(--accent); border: none; border-radius: 14px; cursor: pointer;
+}
+.start:active { background: var(--accent-press); }
+.start:disabled { opacity: .6; cursor: default; }
+
+.status { min-height: 1.4em; margin: 16px 0 0; text-align: center; font-weight: 600; }
+.status.ok { color: var(--ok); }
+.status.err { color: var(--err); }
+.status.pending { color: var(--muted); }
+
+.note { margin: 12px 0 0; font-size: .8rem; color: var(--muted); text-align: center; }
