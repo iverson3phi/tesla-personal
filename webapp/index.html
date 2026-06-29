@@ -15,9 +15,9 @@
 
     <section class="row">
       <span class="label">건조 시간</span>
-      <span id="minutesLabel" class="value">3분</span>
+      <span id="minutesLabel" class="value">1분</span>
     </section>
-    <input id="minutes" type="range" min="1" max="3" step="1" value="3" class="slider">
+    <input id="minutes" type="range" min="1" max="3" step="1" value="1" class="slider">
 
     <section class="row toggle">
       <span class="label">창문 살짝 열기</span>
@@ -28,9 +28,9 @@
     </section>
 
     <button id="start" class="start">건조 시작</button>
+    <button id="cancel" class="start cancel">취소 (공조 끄고 창문 닫기)</button>
 
     <p id="status" class="status"></p>
-    <p class="note">'전송됨'은 메시지 전송 성공이며, 차량 동작 확인은 아닙니다.</p>
 
     <hr class="sep">
 
@@ -55,6 +55,15 @@
 
     <button id="sentrySave" class="start">설정 저장</button>
     <p id="sentryStatus" class="status"></p>
+
+    <!-- 감시모드 현재상태/실시간확인 UI는 일단 숨김(기능 코드는 app.js에 유지).
+         다시 쓰려면 아래 주석을 해제하면 된다.
+    <section class="row">
+      <span class="label">현재 상태</span>
+      <span id="sentryState" class="value">—</span>
+    </section>
+    <button id="sentryCheck" class="start">실시간 확인</button>
+    -->
   </main>
 
   <script type="module" src="./app.js"></script>

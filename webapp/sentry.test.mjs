@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { isValidHHMM, buildSchedulePayload } from './sentry.js';
+import { isValidHHMM, buildSchedulePayload, buildSentryStatusMessage } from './sentry.js';
 
 assert.equal(isValidHHMM('05:30'), true);
 assert.equal(isValidHHMM('23:59'), true);
@@ -18,5 +18,7 @@ assert.deepEqual(
 assert.deepEqual(
   buildSchedulePayload({ onTime: '06:00', offTime: '21:00', enabled: 0 }),
   { onTime: '06:00', offTime: '21:00', enabled: false });
+
+assert.equal(buildSentryStatusMessage(), 'sentry status');
 
 console.log('sentry tests passed');

@@ -10,3 +10,8 @@ export function isValidHHMM(s) {
 export function buildSchedulePayload({ onTime, offTime, enabled }) {
   return { onTime, offTime, enabled: !!enabled };
 }
+
+// 리스너가 실시간 상태 조회로 인식하는 ntfy 본문.
+export function buildSentryStatusMessage() {
+  return 'sentry status';
+}

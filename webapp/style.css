@@ -69,6 +69,10 @@ h1 { margin: 0 0 24px; font-size: 1.5rem; text-align: center; }
 .start:active { background: var(--accent-press); }
 .start:disabled { opacity: .6; cursor: default; }
 
+/* 취소 버튼: 건조 시작과 구분되도록 간격 + 빨간색. */
+.start.cancel { margin-top: 12px; background: var(--err); }
+.start.cancel:active { background: #b91c1c; }
+
 .status { min-height: 1.4em; margin: 16px 0 0; text-align: center; font-weight: 600; }
 .status.ok { color: var(--ok); }
 .status.err { color: var(--err); }

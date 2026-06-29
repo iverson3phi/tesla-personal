@@ -12,3 +12,8 @@ export function buildMessage(minutes, vent) {
   const m = clampMinutes(minutes);
   return vent ? `afterblow ${m} vent` : `afterblow ${m}`;
 }
+
+// 리스너가 취소(공조off+창문닫기)로 인식하는 ntfy 본문.
+export function buildCancelMessage() {
+  return 'afterblow cancel';
+}

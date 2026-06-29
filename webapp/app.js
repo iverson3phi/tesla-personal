@@ -1,5 +1,5 @@
-import { buildMessage } from './message.js';
-import { isValidHHMM, buildSchedulePayload } from './sentry.js';
+import { buildMessage, buildCancelMessage } from './message.js';
+import { isValidHHMM, buildSchedulePayload, buildSentryStatusMessage } from './sentry.js';
 
 const TOPIC_URL = 'https://ntfy.sh/tesla-ab-9f3k7q2zx8m';
 
@@ -45,6 +45,27 @@ async function trigger() {
 }
 startBtn.addEventListener('click', trigger);
 
+const cancelBtn = document.getElementById('cancel');
+
+async function triggerCancel() {
+  cancelBtn.disabled = true;
+  setStatus('취소 전송 중…', 'pending');
+  try {
+    const res = await fetch(TOPIC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: buildCancelMessage(),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    setStatus('취소 전송됨 ✓ (공조 끄고 창문 닫기)', 'ok');
+  } catch (e) {
+    setStatus(`취소 전송 실패: ${e.message} — 다시 시도하세요`, 'err');
+  } finally {
+    cancelBtn.disabled = false;
+  }
+}
+cancelBtn.addEventListener('click', triggerCancel);
+
 const sentryEnabled = document.getElementById('sentryEnabled');
 const sentryOn = document.getElementById('sentryOn');
 const sentryOff = document.getElementById('sentryOff');
@@ -62,16 +83,30 @@ function applySchedule(s) {
   sentryEnabled.checked = !!s.enabled;
 }
 
+const sentryStateEl = document.getElementById('sentryState');
+
+function renderSentryState(s) {
+  if (!sentryStateEl) return; // 현재상태 UI를 숨긴 경우 no-op (기능 코드는 유지)
+  if (!s || !s.lastState) {
+    sentryStateEl.textContent = '상태 미상';
+    return;
+  }
+  const label = s.lastState === 'on' ? 'ON' : 'OFF';
+  const kind = s.lastStateSource === 'status' ? '실시간' : '마지막 명령';
+  sentryStateEl.textContent = `${label} (${kind})`;
+}
+
 async function loadSchedule() {
   try {
     const res = await fetch(SENTRY_API);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const s = await res.json();
     applySchedule(s);
+    renderSentryState(s);
     localStorage.setItem(SENTRY_CACHE_KEY, JSON.stringify(s));
   } catch (e) {
     const cached = localStorage.getItem(SENTRY_CACHE_KEY);
-    if (cached) applySchedule(JSON.parse(cached));
+    if (cached) { const c = JSON.parse(cached); applySchedule(c); renderSentryState(c); }
     setSentryStatus(`현재 설정을 못 불러왔습니다 (${e.message}) — 캐시 표시`, 'err');
   }
 }
@@ -103,6 +138,56 @@ async function saveSchedule() {
 }
 
 sentrySave.addEventListener('click', saveSchedule);
+
+const sentryCheckBtn = document.getElementById('sentryCheck');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function checkSentryRealtime() {
+  sentryCheckBtn.disabled = true;
+  // 기준 타임스탬프(이 값이 바뀌면 새 조회 결과가 들어온 것).
+  let baseline = null;
+  try {
+    const r0 = await fetch(SENTRY_API);
+    if (r0.ok) baseline = (await r0.json()).lastStateAt || null;
+  } catch { /* 무시: 폴링에서 다시 시도 */ }
+
+  setSentryStatus('실시간 확인 중… (차량을 깨우지 않음 · 오프라인이면 실패)', 'pending');
+  try {
+    const res = await fetch(TOPIC_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: buildSentryStatusMessage(),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (e) {
+    setSentryStatus(`확인 요청 실패: ${e.message}`, 'err');
+    sentryCheckBtn.disabled = false;
+    return;
+  }
+
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    try {
+      const r = await fetch(SENTRY_API);
+      if (!r.ok) continue;
+      const s = await r.json();
+      // 기준 조회가 실패했으면(baseline=null) 첫 폴링 값을 기준으로 삼아,
+      // 기존에 남아 있던 status 결과를 새 결과로 오인하지 않는다.
+      if (baseline === null) { baseline = s.lastStateAt || ''; continue; }
+      if (s.lastStateAt && s.lastStateAt !== baseline && s.lastStateSource === 'status') {
+        renderSentryState(s);
+        localStorage.setItem(SENTRY_CACHE_KEY, JSON.stringify(s));
+        setSentryStatus('실시간 확인 완료 ✓', 'ok');
+        sentryCheckBtn.disabled = false;
+        return;
+      }
+    } catch { /* 무시: 다음 폴링 */ }
+  }
+  setSentryStatus('확인 실패 — 차량이 오프라인이거나 PC가 꺼져 있을 수 있음', 'err');
+  sentryCheckBtn.disabled = false;
+}
+// 실시간 확인 버튼은 현재 UI에서 숨김 — 버튼이 있을 때만 연결(기능 코드는 유지).
+if (sentryCheckBtn) sentryCheckBtn.addEventListener('click', checkSentryRealtime);
+
 loadSchedule();
 
 // 설치형/오프라인 실행을 위한 서비스워커 등록.
