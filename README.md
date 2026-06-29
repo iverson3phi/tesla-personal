@@ -340,7 +340,7 @@ npx wrangler pages deploy webapp --project-name=tesla-afterblow --branch=main
 
 | UI 요소 | 설명 |
 |---|---|
-| 건조 시간 슬라이더 | 1–10분 선택, 기본 3분 |
+| 건조 시간 슬라이더 | 1–3분 선택, 기본 3분 |
 | 창문 살짝 열기 토글 | 기본 ON — 건조 중 창문을 살짝 열어 습한 공기 배출 (보안·비 주의) |
 | 건조 시작 버튼 | `afterblow <분> [vent]` 형식으로 ntfy 토픽에 POST |
 
@@ -385,11 +385,11 @@ systemctl status tesla-afterblow --no-pager   # active (running) 확인
 
 | 예시 | 동작 |
 |---|---|
-| `afterblow 3` | 3분 건조, 창문 닫힘 |
-| `afterblow 5 vent` | 5분 건조 + 창문 살짝 열기 |
+| `afterblow 2` | 2분 건조, 창문 닫힘 |
+| `afterblow 3 vent` | 3분 건조 + 창문 살짝 열기 |
 | `afterblow` (레거시) | 3분 건조, 창문 닫힘 (하위 호환) |
 
-분은 1–10으로 클램프됩니다. PWA 앱은 트리거할 때마다 슬라이더·토글 값을 메시지에 담아 전송하므로, 건조 시간·창문 환기는 스크립트에 하드코딩하지 않습니다.
+분은 1–3으로 클램프됩니다. PWA 앱은 트리거할 때마다 슬라이더·토글 값을 메시지에 담아 전송하므로, 건조 시간·창문 환기는 스크립트에 하드코딩하지 않습니다.
 
 > 참고: 기본 분이 두 곳에서 다릅니다 — **ntfy 경로**(bash 파서)에서 분을 생략하면 3분이고, **`tesla-sentry afterblow`를 직접 호출**할 때 분을 생략하면 8분(Go CLI 기본값)입니다. PWA 앱은 항상 분을 명시해 보내므로 이 차이의 영향을 받지 않습니다.
 

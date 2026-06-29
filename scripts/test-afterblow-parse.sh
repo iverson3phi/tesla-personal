@@ -17,12 +17,12 @@ check() { # <desc> <expected> <actual>
 check "sanitize 2"         "2"      "$(ab_sanitize_minutes 2)"
 check "sanitize junk -> 3" "3"      "$(ab_sanitize_minutes abc)"
 check "sanitize 0 -> 1"    "1"      "$(ab_sanitize_minutes 0)"
-check "sanitize 99 -> 10"  "10"     "$(ab_sanitize_minutes 99)"
+check "sanitize 99 -> 3"   "3"      "$(ab_sanitize_minutes 99)"
 
 check "bare afterblow -> 3" "3"      "$(ab_parse_message 'afterblow')"
 check "afterblow 2 -> 2"    "2"      "$(ab_parse_message 'afterblow 2')"
 check "afterblow 3 vent"    "3 vent" "$(ab_parse_message 'afterblow 3 vent')"
-check "afterblow 99 -> 10"  "10"     "$(ab_parse_message 'afterblow 99')"
+check "afterblow 99 -> 3"   "3"      "$(ab_parse_message 'afterblow 99')"
 check "afterblow abc -> 3"  "3"      "$(ab_parse_message 'afterblow abc')"
 
 if ab_parse_message 'hello world' >/dev/null 2>&1; then
@@ -31,7 +31,7 @@ else
 	printf 'ok   - non-afterblow line ignored\n'
 fi
 
-got="$(ab_dispatch_line 'afterblow 4 vent' echo)"
-check "dispatch args" "4 vent" "$got"
+got="$(ab_dispatch_line 'afterblow 2 vent' echo)"
+check "dispatch args" "2 vent" "$got"
 
 exit "$fail"

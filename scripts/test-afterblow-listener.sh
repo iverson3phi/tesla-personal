@@ -8,7 +8,7 @@ source "$DIR/afterblow-listener.sh"
 RECORD="$(mktemp)"
 record() { printf '%s\n' "$*" >>"$RECORD"; }
 
-printf 'afterblow 2 vent\n\nhello world\nafterblow 5\n' | ab_consume_stream record
+printf 'afterblow 2 vent\n\nhello world\nafterblow 1\n' | ab_consume_stream record
 
 mapfile -t lines <"$RECORD"
 rm -f "$RECORD"
@@ -25,6 +25,6 @@ check() { # <desc> <expected> <actual>
 
 check "count" "2"      "${#lines[@]}"
 check "first" "2 vent" "${lines[0]:-}"
-check "second" "5"     "${lines[1]:-}"
+check "second" "1"     "${lines[1]:-}"
 
 exit "$fail"

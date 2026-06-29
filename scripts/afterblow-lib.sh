@@ -4,7 +4,7 @@
 
 # ab_sanitize_minutes <raw> -> 정수 분 출력.
 #   - 비숫자 -> 3 (기본)
-#   - [1, 10]로 클램프
+#   - [1, 3]로 클램프
 ab_sanitize_minutes() {
 	local raw="${1:-}"
 	if ! [[ "$raw" =~ ^[0-9]+$ ]]; then
@@ -13,7 +13,7 @@ ab_sanitize_minutes() {
 	fi
 	local n=$((10#$raw))
 	((n < 1)) && n=1
-	((n > 10)) && n=10
+	((n > 3)) && n=3
 	printf '%s' "$n"
 }
 
