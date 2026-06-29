@@ -201,6 +201,22 @@ chmod 600 ~/.config/tesla-sentry/config.json
 
 > 설정 디렉터리는 `XDG_CONFIG_HOME`을 따르며 기본값은 `~/.config/tesla-sentry/`입니다.
 
+#### (선택) 감시모드 상태 보고 — 폰 앱 "실시간 확인"용
+
+폰 앱의 감시모드 **"실시간 확인"** 기능을 쓰려면 아래 두 필드를 `config.json`에 추가합니다. 그러면 `tesla-sentry on/off/status` 성공 시 현재 상태를 Worker(KV)에 보고하고, 폰 앱이 그 값을 읽어 표시합니다. **두 값 중 하나라도 비어 있으면 보고는 조용히 생략**되며, on/off/status 명령 자체는 정상 동작합니다(이 경우 폰의 "실시간 확인"은 30초 후 실패로 표시됨).
+
+```jsonc
+{
+  // ... 위 필드들 ...
+  "sentry_state_url":   "https://이름.workers.dev/api/sentry-schedule 와 같은 Worker의 /api/sentry-state 주소",
+  "sentry_state_token": "Worker의 SENTRY_TOKEN 과 동일한 값"
+}
+```
+
+- `sentry_state_url` — Worker 주소 + `/api/sentry-state` (감시모드 스케줄 API와 같은 Worker).
+- `sentry_state_token` — Worker에 주입한 `SENTRY_TOKEN` 시크릿과 **반드시 같은 값** (PUT 인증용).
+- 이 기능은 Worker에 `PUT /api/sentry-state` 라우트가 배포되어 있어야 동작합니다(Worker 재배포 필요).
+
 ---
 
 ### 6단계. 테슬라에 도메인 등록
@@ -311,7 +327,7 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 ( crontab -l 2>/dev/null; echo '* * * * * /home/allen/Projects/tesla/scripts/sentry-schedule-check.sh' ) | crontab -
 ```
 
-- 로그: `~/.config/tesla-sentry/sentry.log`
+- 로그: 프로젝트 루트 `tesla.log` (감시모드 스케줄 실행 시 `[sched]` 태그로 기록)
 - 테스트 모드 (실제 명령 실행 없음): `SENTRY_DRY_RUN=1 /path/to/sentry-schedule-check.sh`
 
 > crontab 줄의 시각은 `* * * * *` (매분)로 고정합니다 — ON/OFF 시각은 KV에서 가져오므로 crontab을 직접 편집하지 않아도 됩니다. 폰에서 시각을 바꾸면 즉시 반영됩니다.
@@ -411,7 +427,7 @@ sudo systemctl enable --now tesla-afterblow
 systemctl status tesla-afterblow --no-pager   # active (running) 확인
 ```
 
-> 데몬은 `<저장소>/afterblow.log`에 로그를 기록합니다(git 무시 대상). 서비스 로그는 `journalctl -u tesla-afterblow -f`로도 볼 수 있습니다.
+> 데몬은 프로젝트 루트 `tesla.log`에 로그를 기록합니다(`[listener]`/`[run]` 태그로 구분, git 무시 대상). 서비스 로그는 `journalctl -u tesla-afterblow -f`로도 볼 수 있습니다.
 
 | 파일 | 역할 |
 |---|---|
@@ -449,7 +465,7 @@ systemctl status tesla-afterblow --no-pager   # active (running) 확인
 ```bash
 # 전체 경로(휴대폰 없이) 검증: 수동으로 메시지 발사
 curl -d 'afterblow 1' https://ntfy.sh/tesla-ab-9f3k7q2zx8m
-tail -f afterblow.log                                  # TRIGGERED → command finished 확인
+tail -f tesla.log                                  # TRIGGERED → command finished 확인
 
 # 단위 테스트 (bash 파서 + JS 메시지 빌더)
 for t in scripts/test-afterblow-*.sh; do bash "$t"; done
