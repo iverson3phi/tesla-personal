@@ -14,8 +14,9 @@ check() { # <desc> <expected> <actual>
 	fi
 }
 
-check "sentry on"  "on"  "$(ab_parse_sentry 'sentry on')"
-check "sentry off" "off" "$(ab_parse_sentry 'sentry off')"
+check "sentry on"     "on"     "$(ab_parse_sentry 'sentry on')"
+check "sentry off"    "off"    "$(ab_parse_sentry 'sentry off')"
+check "sentry status" "status" "$(ab_parse_sentry 'sentry status')"
 
 # 비대상/불량 입력은 return 1 (출력 없음)
 for bad in 'sentry maybe' 'sentry' 'afterblow 2' 'hello' 'sentry on extra'; do

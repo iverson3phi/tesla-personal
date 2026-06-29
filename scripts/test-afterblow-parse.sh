@@ -34,4 +34,13 @@ fi
 got="$(ab_dispatch_line 'afterblow 2 vent' echo)"
 check "dispatch args" "2 vent" "$got"
 
+check "cancel ok"        "cancel" "$(ab_parse_cancel 'afterblow cancel')"
+for bad in 'afterblow' 'afterblow 2' 'afterblow cancel now' 'cancel' 'hello'; do
+	if ab_parse_cancel "$bad" >/dev/null 2>&1; then
+		printf 'FAIL - cancel rejected: %s\n' "$bad"; fail=1
+	else
+		printf 'ok   - cancel rejected: %s\n' "$bad"
+	fi
+done
+
 exit "$fail"

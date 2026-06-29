@@ -11,7 +11,7 @@ ROOT="$(cd "$DIR/.." && pwd)"
 source "$DIR/afterblow-lib.sh"
 
 # ── 설정 (환경변수로 덮어쓸 수 있음) ──────────────────────────────
-LOG="${LOG:-$ROOT/afterblow.log}"
+LOG="${LOG:-$ROOT/tesla.log}"
 # ──────────────────────────────────────────────────────────────────
 
 log() { printf '%s [run] %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
@@ -29,8 +29,24 @@ if [ -n "${AFTERBLOW_DRY_RUN:-}" ]; then
 	exit 0
 fi
 
+# 중복 가드: afterblow가 이미 진행 중이면 새 트리거를 무시한다(리스너가 핸들러를
+# 백그라운드로 돌리므로 더블탭 시 동시 실행을 막는다). 락은 fd 8을 닫을 때(=프로세스
+# 종료/강제종료 시) 자동 해제되므로, 취소가 이 프로세스를 kill하면 곧바로 풀린다.
+LOCKFILE="${AFTERBLOW_LOCK:-$ROOT/.afterblow.lock}"
+exec 8>"$LOCKFILE"
+if ! flock -n 8; then
+	log "afterblow 이미 진행 중 — 새 트리거 무시 (${minutes}min, vent=${vent:-off})"
+	exit 0
+fi
+# 취소가 진행 중 afterblow를 찾아 멈출 수 있도록 PID를 남긴다.
+PIDFILE="${AFTERBLOW_PIDFILE:-$ROOT/.afterblow.pid}"
+printf '%s\n' "$$" >"$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
+
 log "AFTERBLOW TRIGGERED (${minutes}min, vent=${vent:-off})"
 
-"$ROOT/tesla-sentry" afterblow "${args[@]}" >>"$LOG" 2>&1
+# AFTERBLOW_CMD로 바이너리를 덮어쓸 수 있다(테스트용; 기본은 실제 tesla-sentry).
+CMD="${AFTERBLOW_CMD:-$ROOT/tesla-sentry}"
+"$CMD" afterblow "${args[@]}" >>"$LOG" 2>&1
 rc=$?
 log "command finished (exit $rc)"

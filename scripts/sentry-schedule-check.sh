@@ -20,7 +20,7 @@ source "$DIR/sentry-schedule-lib.sh"
 # ── 설정 (환경변수로 덮어쓸 수 있음) ──────────────────────────────
 SENTRY_API="${SENTRY_API:-https://tesla-sentry-scheduler.yhlee512.workers.dev/api/sentry-schedule}"
 STATE_DIR="${STATE_DIR:-$HOME/.config/tesla-sentry}"
-LOG="${LOG:-$STATE_DIR/sentry.log}"
+LOG="${LOG:-$ROOT/tesla.log}"
 LOCK="$STATE_DIR/.sentry-check.lock"
 # ──────────────────────────────────────────────────────────────────
 

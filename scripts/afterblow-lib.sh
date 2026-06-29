@@ -47,8 +47,8 @@ ab_dispatch_line() {
 	"$@" $parsed
 }
 
-# ab_parse_sentry <line> -> "sentry on|off" 메시지면 on/off 토큰을 출력하고 return 0.
-#   정확히 2토큰(sentry + on|off)만 허용. 아니면 return 1 (우리 메시지가 아님).
+# ab_parse_sentry <line> -> "sentry on|off|status" 메시지면 on/off/status 토큰을 출력하고 return 0.
+#   정확히 2토큰(sentry + on|off|status)만 허용. 아니면 return 1 (우리 메시지가 아님).
 ab_parse_sentry() {
 	local line="$1"
 	local toks
@@ -56,7 +56,20 @@ ab_parse_sentry() {
 	[ "${#toks[@]}" -eq 2 ] || return 1
 	[ "${toks[0]}" = "sentry" ] || return 1
 	case "${toks[1]}" in
-		on | off) printf '%s' "${toks[1]}" ;;
+		on | off | status) printf '%s' "${toks[1]}" ;;
 		*) return 1 ;;
 	esac
+}
+
+# ab_parse_cancel <line> -> "afterblow cancel" 정확히 2토큰이면 "cancel"을 출력하고
+#   return 0. 아니면 return 1. (둘째 토큰을 분으로 보는 ab_parse_message가
+#   "cancel"을 3으로 오해하지 않도록, 리스너에서 이 파서를 먼저 호출한다.)
+ab_parse_cancel() {
+	local line="$1"
+	local toks
+	read -r -a toks <<<"$line"
+	[ "${#toks[@]}" -eq 2 ] || return 1
+	[ "${toks[0]}" = "afterblow" ] || return 1
+	[ "${toks[1]}" = "cancel" ] || return 1
+	printf 'cancel'
 }
