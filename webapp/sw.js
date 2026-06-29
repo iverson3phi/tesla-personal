@@ -1,4 +1,4 @@
-const CACHE = 'afterblow-v2';
+const CACHE = 'afterblow-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,8 @@ const ASSETS = [
   './message.js',
   './manifest.json',
   './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {

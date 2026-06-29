@@ -38,7 +38,8 @@ webapp/                휴대폰 PWA (Cloudflare Pages 배포용 정적 파일)
   index.html, style.css, app.js   단일 화면 UI — 애프터블로우 + 감시모드 스케줄 섹션
   message.js, message.test.mjs    애프터블로우 메시지 빌더 + 단위 테스트
   sentry.js, sentry.test.mjs      감시모드 스케줄 API 헬퍼 + 단위 테스트
-  manifest.json, sw.js, icon.svg  설치형/오프라인 PWA 자원
+  manifest.json, sw.js            설치형/오프라인 PWA 자원 (앱 이름 "Juniper")
+  icon.svg, icon-192.png, icon-512.png   PWA 아이콘 (테슬라 로고 · SVG + 안드로이드용 PNG)
 ```
 
 두 자동화는 독립적입니다: **감시모드**(PWA → KV → PC crontab → tesla-sentry 직접 실행)와 **애프터블로우**(PWA → ntfy → bash 데몬). 같은 `tesla-sentry` 바이너리와 `~/.config/tesla-sentry/` 설정·토큰을 공유합니다.
