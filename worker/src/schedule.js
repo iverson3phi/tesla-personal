@@ -7,6 +7,9 @@ export const DEFAULT_SCHEDULE = {
   enabled: true,
   lastOn: '',
   lastOff: '',
+  lastState: null,
+  lastStateAt: null,
+  lastStateSource: null,
 };
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -38,4 +41,13 @@ export function validateScheduleInput(obj) {
   if (!HHMM_RE.test(offTime)) return { ok: false, error: 'offTime must be HH:MM' };
   if (typeof enabled !== 'boolean') return { ok: false, error: 'enabled must be boolean' };
   return { ok: true, value: { onTime, offTime, enabled } };
+}
+
+// PC가 보낸 감시모드 상태 보고 검증. lastStateAt은 Worker가 찍는다(받지 않음).
+export function validateStateInput(obj) {
+  if (obj == null || typeof obj !== 'object') return { ok: false, error: 'body must be an object' };
+  const { state, source } = obj;
+  if (state !== 'on' && state !== 'off') return { ok: false, error: 'state must be "on" or "off"' };
+  if (source !== 'command' && source !== 'status') return { ok: false, error: 'source must be "command" or "status"' };
+  return { ok: true, value: { state, source } };
 }

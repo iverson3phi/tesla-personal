@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SCHEDULE, kstParts, decideActions, validateScheduleInput,
+  DEFAULT_SCHEDULE, kstParts, decideActions, validateScheduleInput, validateStateInput,
 } from './schedule.js';
 
 const KV_KEY = 'sentry-schedule';
@@ -41,6 +41,24 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (url.pathname === '/api/sentry-state') {
+      if (request.method !== 'PUT') return json({ error: 'method not allowed' }, 405);
+      const auth = request.headers.get('Authorization') || '';
+      if (auth !== `Bearer ${env.SENTRY_TOKEN}`) return json({ error: 'unauthorized' }, 401);
+      let body;
+      try { body = await request.json(); } catch { return json({ error: 'invalid json' }, 400); }
+      const v = validateStateInput(body);
+      if (!v.ok) return json({ error: v.error }, 400);
+      const state = await readState(env);
+      const next = {
+        ...state,
+        lastState: v.value.state,
+        lastStateSource: v.value.source,
+        lastStateAt: new Date().toISOString(),
+      };
+      await writeState(env, next);
+      return json({ ok: true, value: next });
+    }
     if (url.pathname !== '/api/sentry-schedule') return new Response('not found', { status: 404, headers: CORS });
 
     if (request.method === 'GET') {
