@@ -31,6 +31,30 @@
 
     <p id="status" class="status"></p>
     <p class="note">'전송됨'은 메시지 전송 성공이며, 차량 동작 확인은 아닙니다.</p>
+
+    <hr class="sep">
+
+    <h2 class="sub">감시 모드 (Sentry)</h2>
+
+    <section class="row toggle">
+      <span class="label">자동 스케줄</span>
+      <label class="switch">
+        <input id="sentryEnabled" type="checkbox">
+        <span class="track"></span>
+      </label>
+    </section>
+
+    <section class="row">
+      <span class="label">켜는 시각</span>
+      <input id="sentryOn" type="time" class="time">
+    </section>
+    <section class="row">
+      <span class="label">끄는 시각</span>
+      <input id="sentryOff" type="time" class="time">
+    </section>
+
+    <button id="sentrySave" class="start">설정 저장</button>
+    <p id="sentryStatus" class="status"></p>
   </main>
 
   <script type="module" src="./app.js"></script>

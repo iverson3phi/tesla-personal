@@ -46,3 +46,17 @@ ab_dispatch_line() {
 	# 의도적 비따옴표: parsed는 정수+리터럴 "vent"로 이미 정제됨.
 	"$@" $parsed
 }
+
+# ab_parse_sentry <line> -> "sentry on|off" 메시지면 on/off 토큰을 출력하고 return 0.
+#   정확히 2토큰(sentry + on|off)만 허용. 아니면 return 1 (우리 메시지가 아님).
+ab_parse_sentry() {
+	local line="$1"
+	local toks
+	read -r -a toks <<<"$line"
+	[ "${#toks[@]}" -eq 2 ] || return 1
+	[ "${toks[0]}" = "sentry" ] || return 1
+	case "${toks[1]}" in
+		on | off) printf '%s' "${toks[1]}" ;;
+		*) return 1 ;;
+	esac
+}

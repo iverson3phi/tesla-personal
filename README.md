@@ -1,6 +1,6 @@
 # tesla-sentry
 
-Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 실행하면 되고, 크론탭에 등록해 매일 자동으로 동작시킬 수 있습니다.
+Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 직접 실행하거나, 휴대폰 PWA 앱에서 ON/OFF 시각을 설정하면 PC crontab(매분 실행)이 Cloudflare KV에서 시각을 읽어 KST 기준으로 판정해 자동으로 동작시킵니다.
 
 추가로, 주차 후 휴대폰 PWA 앱 버튼 한 번으로 에어컨 증발기를 말려 곰팡이·냄새를 예방하는 **애프터블로우(after-blow)** 자동화도 지원합니다 (아래 [애프터블로우 자동화](#애프터블로우-자동화) 참고).
 
@@ -19,19 +19,29 @@ Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(S
 ```
 cmd/tesla-sentry/      Go CLI 진입점 (on/off/status/afterblow 등)
 internal/              Go 내부 패키지 (tesla SDK 래퍼, oauth, config, keys)
-scripts/               애프터블로우 PC 데몬 (bash) + systemd 유닛 + 단위 테스트
+worker/                Cloudflare Worker — 감시모드 스케줄러
+  src/schedule.js          KST 시각 판정 로직 (순수 함수)
+  src/index.js             GET/PUT API + Cron 핸들러 (현재 cron 비활성)
+  wrangler.toml            Worker 설정 (KV 바인딩, Cron 트리거 — 현재 비활성: crons = [])
+  README.md                Worker 배포 절차
+scripts/               PC 데몬 (bash) + systemd 유닛 + 단위 테스트
   afterblow-lib.sh         ntfy 메시지 파싱 공통 함수 (listener·run이 source)
-  afterblow-listener.sh    ntfy 토픽 상시 구독 → 메시지 파싱 → 핸들러 호출
-  afterblow-run.sh         디바운스 후 tesla-sentry afterblow 실행
+  afterblow-listener.sh    ntfy 토픽 상시 구독 → afterblow 디스패치 (sentry on/off 분기는 현재 미사용 — Cloudflare cron 복구 시 대비)
+  afterblow-run.sh         메시지의 분/환기로 tesla-sentry afterblow 실행
   tesla-afterblow.service  systemd 유닛 (사용자/경로는 본인 환경에 맞게 수정)
+  sentry-schedule-lib.sh   판정 순수 함수 (to_min, sentry_should_fire)
+  sentry-schedule-check.sh crontab이 매분 실행: KV GET → 판정 → tesla-sentry on/off
   test-afterblow-*.sh      bash 파서 단위 테스트
+  test-sentry-parse.sh     sentry 메시지 파서 단위 테스트
+  test-sentry-schedule.sh  판정 단위 테스트
 webapp/                휴대폰 PWA (Cloudflare Pages 배포용 정적 파일)
-  index.html, style.css, app.js   단일 화면 UI (슬라이더+토글+버튼)
-  message.js, message.test.mjs    메시지 빌더 + node 단위 테스트
+  index.html, style.css, app.js   단일 화면 UI — 애프터블로우 + 감시모드 스케줄 섹션
+  message.js, message.test.mjs    애프터블로우 메시지 빌더 + 단위 테스트
+  sentry.js, sentry.test.mjs      감시모드 스케줄 API 헬퍼 + 단위 테스트
   manifest.json, sw.js, icon.svg  설치형/오프라인 PWA 자원
 ```
 
-두 자동화는 독립적입니다: **감시모드**(Go CLI + crontab)와 **애프터블로우**(PWA → ntfy → bash 데몬). 같은 `tesla-sentry` 바이너리와 `~/.config/tesla-sentry/` 설정·토큰을 공유합니다.
+두 자동화는 독립적입니다: **감시모드**(PWA → KV → PC crontab → tesla-sentry 직접 실행)와 **애프터블로우**(PWA → ntfy → bash 데몬). 같은 `tesla-sentry` 바이너리와 `~/.config/tesla-sentry/` 설정·토큰을 공유합니다.
 
 ---
 
@@ -270,22 +280,55 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 
 ---
 
-## Crontab 등록
+## 감시모드 스케줄 (PWA + PC crontab)
 
-매일 밤 22:00에 감시모드를 켜고 매일 아침 07:00에 끄려면:
+감시모드 ON/OFF 시각은 **휴대폰 PWA 앱**의 "감시 모드(Sentry)" 섹션에서 설정합니다. 시각은 Cloudflare KV에 저장되어 기기 간 자동으로 동기화됩니다.
+
+> **아키텍처 변경 (2026-06):** Cloudflare Cron Trigger 플랫폼 장애로 `scheduled()` 핸들러가 실행되지 않는 문제가 발생했습니다. Worker·KV·PWA는 변경 없이 그대로 유지하고, **타이머 역할만 PC crontab으로 이전**했습니다. Worker의 cron 트리거는 이중 실행 방지를 위해 비활성화(`crons = []`)했습니다.
+
+### 동작 구조
+
+```
+[휴대폰] PWA 앱 "감시 모드(Sentry)" 섹션 — ON 시각, OFF 시각, 활성화 토글 설정
+   │  (HTTP PUT → Cloudflare Worker API)
+   ▼
+[Cloudflare KV] 스케줄 저장 (단일 진실 공급원, 기기 간 자동 동기화)
+   │  (HTTP GET ← PC가 매분 조회)
+   ▼
+[PC crontab — 매분 실행] sentry-schedule-check.sh
+   │  KV GET → 현재 KST 시각이 ON/OFF 시각과 "정확히 같은 분"인지 판정
+   ▼
+[PC] tesla-sentry on / off 직접 실행
+```
+
+시각은 **KST(한국 표준시)** 기준입니다. PC가 KST이므로 별도 시간대 변환은 불필요합니다.
+
+**정시(==) 판정:** crontab이 매분 실행하지만, 현재 시각이 ON/OFF 시각과 *정확히 같은 분*일 때만 실행하므로 상태 파일 없이 하루 1회 동작합니다. 트레이드오프로, 그 1분에 PC가 꺼져 있으면 그날은 건너뜁니다(PC가 상시 켜져 있으면 사실상 문제없음).
+
+### PC crontab 등록
 
 ```bash
-crontab -e
+( crontab -l 2>/dev/null; echo '* * * * * /home/allen/Projects/tesla/scripts/sentry-schedule-check.sh' ) | crontab -
 ```
 
-다음 두 줄을 추가합니다:
+- 로그: `~/.config/tesla-sentry/sentry.log`
+- 테스트 모드 (실제 명령 실행 없음): `SENTRY_DRY_RUN=1 /path/to/sentry-schedule-check.sh`
 
-```cron
-0 22 * * *  /usr/local/bin/tesla-sentry on  >> ~/.config/tesla-sentry/sentry.log 2>&1
-0 7  * * *  /usr/local/bin/tesla-sentry off >> ~/.config/tesla-sentry/sentry.log 2>&1
+> crontab 줄의 시각은 `* * * * *` (매분)로 고정합니다 — ON/OFF 시각은 KV에서 가져오므로 crontab을 직접 편집하지 않아도 됩니다. 폰에서 시각을 바꾸면 즉시 반영됩니다.
+
+### Worker 배포
+
+Worker 배포 절차(KV 네임스페이스 생성, `wrangler secret put SENTRY_TOKEN`, `wrangler deploy`)는 **`worker/README.md`** 를 참고하세요. 배포 후 출력되는 Worker URL과 `SENTRY_TOKEN` 값을 `webapp/app.js`의 `SENTRY_API` · `SENTRY_TOKEN` 상수에 기입합니다. `wrangler.toml`의 `crons = []`은 현재 비활성 상태입니다(Cloudflare cron 복구 시 재활성화 예정).
+
+### 수동 제어
+
+스케줄과 무관하게 즉시 켜거나 끄려면 CLI를 직접 실행합니다:
+
+```bash
+tesla-sentry on      # 감시모드 즉시 켜기
+tesla-sentry off     # 감시모드 즉시 끄기
+tesla-sentry status  # 현재 상태 확인
 ```
-
-시각은 cron을 실행하는 머신의 로컬 타임존 기준입니다. 실행 로그는 `~/.config/tesla-sentry/sentry.log`에 쌓입니다.
 
 ---
 
@@ -368,13 +411,13 @@ sudo systemctl enable --now tesla-afterblow
 systemctl status tesla-afterblow --no-pager   # active (running) 확인
 ```
 
-> 데몬은 `<저장소>/afterblow.log`에 로그를, `<저장소>/.afterblow-last`에 디바운스 타임스탬프를 기록합니다(둘 다 git 무시 대상). 서비스 로그는 `journalctl -u tesla-afterblow -f`로도 볼 수 있습니다.
+> 데몬은 `<저장소>/afterblow.log`에 로그를 기록합니다(git 무시 대상). 서비스 로그는 `journalctl -u tesla-afterblow -f`로도 볼 수 있습니다.
 
 | 파일 | 역할 |
 |---|---|
 | `scripts/afterblow-lib.sh` | 메시지 파싱 공통 함수 (`listener`·`run`이 함께 사용) |
 | `scripts/afterblow-listener.sh` | ntfy 토픽 상시 구독(자동 재접속) → 메시지 수신 시 핸들러 호출 |
-| `scripts/afterblow-run.sh` | 디바운스 후 `tesla-sentry afterblow` 실행 |
+| `scripts/afterblow-run.sh` | 메시지의 분/환기로 `tesla-sentry afterblow` 실행 |
 | `scripts/tesla-afterblow.service` | 부팅 자동시작 + 죽으면 자동 재시작 (`HOME` 지정 — 설정 디렉터리 탐색에 필요) |
 
 > 토픽 URL은 `afterblow-listener.sh` 상단의 `TOPIC_URL`을, 서비스의 사용자/경로는 `tesla-afterblow.service`를 본인 환경에 맞게 수정하세요.
@@ -405,7 +448,6 @@ systemctl status tesla-afterblow --no-pager   # active (running) 확인
 
 ```bash
 # 전체 경로(휴대폰 없이) 검증: 수동으로 메시지 발사
-rm -f .afterblow-last                                  # 디바운스 초기화
 curl -d 'afterblow 1' https://ntfy.sh/tesla-ab-9f3k7q2zx8m
 tail -f afterblow.log                                  # TRIGGERED → command finished 확인
 

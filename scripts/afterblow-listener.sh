@@ -17,6 +17,9 @@ log() { printf '%s [listener] %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
 # 핸들러 호출 래퍼(비정상 종료를 로그에 남김).
 run_handler() { "$HANDLER" "$@" || log "handler exited non-zero"; }
 
+# sentry on|off 실행 래퍼.
+run_sentry() { "$ROOT/tesla-sentry" "$1" >>"$LOG" 2>&1 || log "tesla-sentry $1 exited non-zero"; }
+
 # 스트림 본체: stdin을 줄 단위로 읽어 afterblow 메시지마다 핸들러를 호출한다.
 # (테스트에서 가짜 입력 + 가짜 핸들러로 호출 가능.)
 ab_consume_stream() {
@@ -25,7 +28,13 @@ ab_consume_stream() {
 	while IFS= read -r line; do
 		[ -z "$line" ] && continue # keepalive
 		log "recv: $line"
-		ab_dispatch_line "$line" "$handler" || true
+		local sentry_arg
+		if sentry_arg="$(ab_parse_sentry "$line")"; then
+			log "sentry $sentry_arg"
+			run_sentry "$sentry_arg"
+		else
+			ab_dispatch_line "$line" "$handler" || true
+		fi
 	done
 }
 

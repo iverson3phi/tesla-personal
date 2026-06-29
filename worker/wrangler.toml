@@ -1,0 +1,15 @@
+name = "tesla-sentry-scheduler"
+main = "src/index.js"
+compatibility_date = "2026-06-29"
+
+# Cloudflare Cron Triggers 플랫폼 장애(2026-06)로 cron을 PC crontab으로 이관함.
+# 빈 배열로 cron을 명시적으로 제거(이중 발행 방지). 복구 시 ["* * * * *"]로 되살리면 됨.
+[triggers]
+crons = []
+
+[[kv_namespaces]]
+binding = "SCHEDULE_KV"
+id = "3795edae1c8c4bcc82e5005f5d4112dc"
+
+[vars]
+NTFY_URL = "https://ntfy.sh/tesla-ab-9f3k7q2zx8m"
