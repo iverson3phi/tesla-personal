@@ -322,6 +322,8 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 
 **정시(==) 판정:** crontab이 매분 실행하지만, 현재 시각이 ON/OFF 시각과 *정확히 같은 분*일 때만 실행하므로 상태 파일 없이 하루 1회 동작합니다. 트레이드오프로, 그 1분에 PC가 꺼져 있으면 그날은 건너뜁니다(PC가 상시 켜져 있으면 사실상 문제없음).
 
+**상태확인·재시도:** `tesla-sentry on/off`는 명령 후 `vehicle_data`로 실제 감시모드 상태를 확인합니다(5초 간격 최대 3회 읽기 — 반영 지연 흡수). 명령 실패나 상태 불일치면 20초 뒤 다시 시도하며 최대 3회까지 반복합니다. 끝내 원하는 상태가 안 되면 종료코드 1로 끝나고(`[sched] sentry on 실패` 로그), 관측된 실제 상태를 Worker에 보고해 폰 앱에 표시됩니다. 매 상태 확인 결과는 `tesla.log`에 `sentry verify: attempt 1/3 read 1/3: sentry=on (want on)` 형태로 남습니다.
+
 ### PC crontab 등록
 
 ```bash

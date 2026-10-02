@@ -17,6 +17,9 @@ import (
 
 const commandTimeout = 3 * time.Minute // wake can take a while
 
+// setCommandTimeout은 on/off의 상태확인·재시도(DefaultVerifyPolicy) 전체를 덮는다.
+const setCommandTimeout = 7 * time.Minute
+
 func main() {
 	log.SetFlags(log.LstdFlags)
 	if len(os.Args) < 2 {
@@ -157,7 +160,7 @@ func reportSentryState(ctx context.Context, cfg *config.Config, state, source st
 }
 
 func cmdSet(on bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), setCommandTimeout)
 	defer cancel()
 	cfg, at, err := loadForCommand(ctx)
 	if err != nil {
@@ -167,16 +170,40 @@ func cmdSet(on bool) error {
 	if err != nil {
 		return err
 	}
-	if err := tesla.SetSentry(ctx, at, cfg.VIN, priv, on); err != nil {
+	// 설정 → 실제 상태 확인 → 불일치/실패 시 재시도. 명령이 "성공"해도 차량에
+	// 반영되지 않는 경우가 있어 vehicle_data로 직접 확인한다.
+	observed := false
+	got, err := tesla.SetVerified(ctx, on, tesla.DefaultVerifyPolicy,
+		func(ctx context.Context, on bool) error { return tesla.SetSentry(ctx, at, cfg.VIN, priv, on) },
+		func(ctx context.Context) (bool, error) {
+			v, err := tesla.SentryState(ctx, at, cfg.VIN)
+			if err == nil {
+				observed = true
+			}
+			return v, err
+		},
+		log.Printf)
+	if err != nil {
+		// 실제 관측된 상태가 있으면 그대로 보고해 폰 앱에 정확히 표시되게 한다.
+		// (ctx가 이미 만료됐을 수 있어 보고는 별도 짧은 타임아웃으로.)
+		if observed {
+			rctx, rcancel := context.WithTimeout(context.Background(), 10*time.Second)
+			reportSentryState(rctx, cfg, stateName(got), "status")
+			rcancel()
+		}
 		return err
 	}
-	state := "off"
-	if on {
-		state = "on"
-	}
-	log.Printf("sentry mode set to %s", state)
+	state := stateName(on)
+	log.Printf("sentry mode set to %s (verified)", state)
 	reportSentryState(ctx, cfg, state, "command")
 	return nil
+}
+
+func stateName(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
 }
 
 const defaultAfterBlowMinutes = 8
