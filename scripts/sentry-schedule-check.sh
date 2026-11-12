@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# crontab(* * * * *)이 매분 실행한다.
+# systemd timer(tesla-sentry-schedule.timer)가 매분 0초에 실행한다. 설치: scripts/install.sh
 # Worker(KV)에서 ON/OFF 시각·활성 토글을 읽어, 현재 KST 시각이 목표 시각과
 # "정확히 같은 분"이면 tesla-sentry on/off 를 실행한다. 시각은 폰 PWA에서 KV로
-# 설정되므로 이 스크립트(crontab 줄)는 고정이다 — "시각 하드코딩" 문제가 없다.
+# 설정되므로 이 스크립트(타이머)는 고정이다 — "시각 하드코딩" 문제가 없다.
 #
 # 정시(==) 판정이라 상태 가드가 필요 없다(그 분에만 매치되어 1회 실행).
 # 트레이드오프: 그 1분에 PC가 꺼져 있으면 그날은 건너뛴다.
 #
-# Cloudflare Worker Cron 장애(2026-06) 우회: 매분 타이머를 PC cron이 담당한다.
+# Cloudflare Worker Cron 장애(2026-06) 우회: 매분 타이머를 PC가 담당한다
+# (처음엔 crontab, 현재는 systemd timer).
 #
 # 환경변수: SENTRY_DRY_RUN=1  실제 명령 대신 의도된 동작만 로그(테스트용).
 set -uo pipefail
@@ -35,6 +36,7 @@ run_sentry() { # <on|off>
 }
 
 # 이전 실행(차 깨우기 등으로 수십 초 소요 가능)이 안 끝났으면 이번 분은 건너뛴다.
+# (timer는 실행 중이면 새로 시작하지 않지만, 수동 실행과 겹치는 경우를 위해 유지.)
 exec 9>"$LOCK"
 flock -n 9 || exit 0
 

@@ -1,6 +1,6 @@
 # tesla-sentry
 
-Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 직접 실행하거나, 휴대폰 PWA 앱에서 ON/OFF 시각을 설정하면 PC crontab(매분 실행)이 Cloudflare KV에서 시각을 읽어 KST 기준으로 판정해 자동으로 동작시킵니다.
+Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 직접 실행하거나, 휴대폰 PWA 앱에서 ON/OFF 시각을 설정하면 PC의 systemd timer(매분 실행)가 Cloudflare KV에서 시각을 읽어 KST 기준으로 판정해 자동으로 동작시킵니다.
 
 추가로, 주차 후 휴대폰 PWA 앱 버튼 한 번으로 에어컨 증발기를 말려 곰팡이·냄새를 예방하는 **애프터블로우(after-blow)** 자동화도 지원합니다 (아래 [애프터블로우 자동화](#애프터블로우-자동화) 참고).
 
@@ -10,7 +10,7 @@ Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(S
 - **테슬라 계정** — 계정에 차량이 등록되어 있어야 합니다
 - **Cloudflare 계정** (무료) — 공개키 파일 하나를 HTTPS로 호스팅하는 데 사용합니다 (아래 3단계에서 설명). 애프터블로우 PWA 앱도 같은 Cloudflare Pages에 올립니다.
 - **Node.js / npm** — Wrangler CLI(공개키·PWA 배포)에 필요합니다. Ubuntu 기준 `sudo apt-get install -y nodejs npm`
-- **bash / curl** — 애프터블로우 구독 데몬에 필요합니다(대부분의 리눅스에 기본 설치). systemd로 상시 실행합니다.
+- **bash / curl / jq** — PC 데몬(애프터블로우 구독·감시모드 스케줄 판정)에 필요합니다. Ubuntu 기준 `sudo apt-get install -y curl jq`. systemd로 상시 실행합니다([상시 서비스 설치](#상시-서비스-설치-systemd) 참고).
 
 ---
 
@@ -24,16 +24,21 @@ worker/                Cloudflare Worker — 감시모드 스케줄러
   src/index.js             GET/PUT API + Cron 핸들러 (현재 cron 비활성)
   wrangler.toml            Worker 설정 (KV 바인딩, Cron 트리거 — 현재 비활성: crons = [])
   README.md                Worker 배포 절차
-scripts/               PC 데몬 (bash) + systemd 유닛 + 단위 테스트
+scripts/               PC 데몬 (bash) + systemd 유닛 + 설치 스크립트 + 단위 테스트
+  install.sh               빌드 + systemd 유닛 설치/갱신/제거 (--uninstall)
+  systemd/                 유닛 템플릿 (@USER@ @HOME@ @ROOT@ — install.sh가 치환)
+    tesla-afterblow.service          ntfy 구독 데몬 (상시 실행, 죽으면 재시작)
+    tesla-sentry-schedule.service    sentry-schedule-check.sh 1회 실행 (oneshot)
+    tesla-sentry-schedule.timer      위 서비스를 매분 0초에 실행
   afterblow-lib.sh         ntfy 메시지 파싱 공통 함수 (listener·run이 source)
   afterblow-listener.sh    ntfy 토픽 상시 구독 → afterblow 디스패치 (sentry on/off 분기는 현재 미사용 — Cloudflare cron 복구 시 대비)
   afterblow-run.sh         메시지의 분/환기로 tesla-sentry afterblow 실행
-  tesla-afterblow.service  systemd 유닛 (사용자/경로는 본인 환경에 맞게 수정)
   sentry-schedule-lib.sh   판정 순수 함수 (to_min, sentry_should_fire)
-  sentry-schedule-check.sh crontab이 매분 실행: KV GET → 판정 → tesla-sentry on/off
+  sentry-schedule-check.sh systemd timer가 매분 실행: KV GET → 판정 → tesla-sentry on/off
   test-afterblow-*.sh      bash 파서 단위 테스트
   test-sentry-parse.sh     sentry 메시지 파서 단위 테스트
   test-sentry-schedule.sh  판정 단위 테스트
+  test-install.sh          install.sh 유닛 렌더링·crontab 정리 단위 테스트
 webapp/                휴대폰 PWA (Cloudflare Pages 배포용 정적 파일)
   index.html, style.css, app.js   단일 화면 UI — 애프터블로우 + 감시모드 스케줄 섹션
   message.js, message.test.mjs    애프터블로우 메시지 빌더 + 단위 테스트
@@ -42,16 +47,18 @@ webapp/                휴대폰 PWA (Cloudflare Pages 배포용 정적 파일)
   icon.svg, icon-192.png, icon-512.png   PWA 아이콘 (테슬라 로고 · SVG + 안드로이드용 PNG)
 ```
 
-두 자동화는 독립적입니다: **감시모드**(PWA → KV → PC crontab → tesla-sentry 직접 실행)와 **애프터블로우**(PWA → ntfy → bash 데몬). 같은 `tesla-sentry` 바이너리와 `~/.config/tesla-sentry/` 설정·토큰을 공유합니다.
+두 자동화는 독립적입니다: **감시모드**(PWA → KV → PC systemd timer → tesla-sentry 직접 실행)와 **애프터블로우**(PWA → ntfy → bash 데몬). 같은 `tesla-sentry` 바이너리와 `~/.config/tesla-sentry/` 설정·토큰을 공유합니다.
 
 ---
 
 ## 빌드
 
 ```bash
-go build -o tesla-sentry ./cmd/tesla-sentry
-sudo install tesla-sentry /usr/local/bin/
+go build -o tesla-sentry ./cmd/tesla-sentry                    # 저장소 루트에 빌드
+sudo ln -sfn "$PWD/tesla-sentry" /usr/local/bin/tesla-sentry   # 어디서나 tesla-sentry 명령으로 사용
 ```
+
+> 바이너리는 **저장소 루트**에 둡니다 — PC 데몬 스크립트들이 `<저장소>/tesla-sentry`를 호출하기 때문입니다. `/usr/local/bin`에는 복사하지 말고 심링크만 걸어, 수동 CLI와 데몬이 같은 바이너리를 쓰게 합니다. 일회성 설정 후 실행하는 [`scripts/install.sh`](#상시-서비스-설치-systemd)가 빌드·심링크를 다시 해 주므로, 코드를 고친 뒤에는 `scripts/install.sh`만 재실행하면 됩니다.
 
 ---
 
@@ -281,6 +288,54 @@ sentry mode: false
 
 ---
 
+## 상시 서비스 설치 (systemd)
+
+감시모드 스케줄 판정과 애프터블로우 구독 데몬은 systemd로 상시 실행합니다. 부팅하면 자동으로 시작되고, 죽으면 다시 뜹니다. 일회성 설정을 마친 뒤 저장소 루트에서 한 번만 실행하면 됩니다:
+
+```bash
+scripts/install.sh
+```
+
+**일반 사용자로 실행하세요.** 필요한 단계에서만 sudo 비밀번호를 묻습니다. root로 실행하면 거부합니다. 서비스는 실행한 사용자와 그 `~/.config/tesla-sentry/`로 동작합니다.
+
+설치 스크립트가 하는 일:
+
+1. `go build`로 `<저장소>/tesla-sentry`를 빌드하고 `/usr/local/bin/tesla-sentry` 심링크를 겁니다.
+2. `scripts/systemd/`의 유닛 템플릿에서 `@USER@`·`@HOME@`·`@ROOT@`를 현재 사용자·저장소 경로로 치환해 `/etc/systemd/system/`에 설치합니다. 경로를 하드코딩하지 않으므로 저장소를 어디에 clone해도 됩니다(경로에 공백만 없으면 됨).
+3. 예전 crontab 방식의 `sentry-schedule-check.sh` 줄이 있으면 제거합니다. timer와 이중 실행되는 것을 막기 위해서입니다.
+4. `tesla-afterblow.service`·`tesla-sentry-schedule.timer`를 enable하고 (재)시작합니다.
+
+| 유닛 | 종류 | 역할 |
+|---|---|---|
+| `tesla-afterblow.service` | 상시 실행 (`simple`) | ntfy 토픽 구독. 죽으면 5초 뒤 재시작 |
+| `tesla-sentry-schedule.timer` | 타이머 | 매분 0초에 아래 서비스를 실행 (`AccuracySec=1s` — 정시 판정이 다음 분으로 밀리지 않게) |
+| `tesla-sentry-schedule.service` | 1회 실행 (`oneshot`) | `sentry-schedule-check.sh` 실행. 이전 실행이 안 끝났으면 timer가 새로 시작하지 않음 |
+
+**재실행 안전:** 코드·스크립트·유닛 템플릿을 고친 뒤 `scripts/install.sh`를 다시 실행하면 재빌드 → 유닛 갱신 → 재시작까지 한 번에 됩니다. (재시작 순간 진행 중인 애프터블로우는 중단됩니다.)
+
+**제거:** `scripts/install.sh --uninstall` — 서비스를 멈추고 유닛·심링크만 지웁니다. 바이너리·설정·토큰·로그는 남깁니다.
+
+**상태 확인:**
+
+```bash
+systemctl status tesla-afterblow --no-pager                    # active (running) 확인
+systemctl list-timers tesla-sentry-schedule.timer --no-pager   # NEXT가 다음 분 0초인지 확인
+tail -f tesla.log                                              # [sched] / [listener] / [run] 실행 로그
+journalctl -u tesla-afterblow -u tesla-sentry-schedule -f      # 서비스 실패 원인
+```
+
+> 매분 실행 기록이 journal을 채우지 않도록 `tesla-sentry-schedule.service`는 `LogLevelMax=notice`로 Starting/Finished 메시지를 생략합니다(실패는 남음). 실제 판정·실행 내역은 `tesla.log`의 `[sched]` 태그로 확인하세요.
+
+> ⚠️ **한 대에서만 실행하세요.** 다른 PC에서도 서비스가 돌고 있으면 차량 명령이 중복 실행되고, 테슬라의 refresh token 회전 때문에 한쪽 토큰이 무효화됩니다. PC를 옮길 때는 기존 PC에서 `scripts/install.sh --uninstall`을 먼저 실행한 뒤 `~/.config/tesla-sentry/`를 옮기세요.
+
+> ⚠️ **절전(서스펜드)을 끄세요.** 감시모드는 정시(==) 판정이라 그 1분에 PC가 잠들어 있으면 그날은 건너뜁니다. 상시 켜두는 데스크톱이라면:
+> ```bash
+> sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+> ```
+> 정전 후 자동 복구까지 원하면 BIOS의 "Restore on AC Power Loss"(전원 복구 시 자동 부팅)도 켜두세요.
+
+---
+
 ## 사용법
 
 설정이 끝나면 다음 명령으로 직접 켜고 끌 수 있습니다:
@@ -297,11 +352,11 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 
 ---
 
-## 감시모드 스케줄 (PWA + PC crontab)
+## 감시모드 스케줄 (PWA + PC systemd timer)
 
 감시모드 ON/OFF 시각은 **휴대폰 PWA 앱**의 "감시 모드(Sentry)" 섹션에서 설정합니다. 시각은 Cloudflare KV에 저장되어 기기 간 자동으로 동기화됩니다.
 
-> **아키텍처 변경 (2026-06):** Cloudflare Cron Trigger 플랫폼 장애로 `scheduled()` 핸들러가 실행되지 않는 문제가 발생했습니다. Worker·KV·PWA는 변경 없이 그대로 유지하고, **타이머 역할만 PC crontab으로 이전**했습니다. Worker의 cron 트리거는 이중 실행 방지를 위해 비활성화(`crons = []`)했습니다.
+> **아키텍처 변경 (2026-06):** Cloudflare Cron Trigger 플랫폼 장애로 `scheduled()` 핸들러가 실행되지 않는 문제가 발생했습니다. Worker·KV·PWA는 변경 없이 그대로 유지하고, **타이머 역할만 PC로 이전**했습니다(처음엔 crontab, 현재는 systemd timer). Worker의 cron 트리거는 이중 실행 방지를 위해 비활성화(`crons = []`)했습니다.
 
 ### 동작 구조
 
@@ -312,7 +367,7 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 [Cloudflare KV] 스케줄 저장 (단일 진실 공급원, 기기 간 자동 동기화)
    │  (HTTP GET ← PC가 매분 조회)
    ▼
-[PC crontab — 매분 실행] sentry-schedule-check.sh
+[PC systemd timer — 매분 0초] sentry-schedule-check.sh
    │  KV GET → 현재 KST 시각이 ON/OFF 시각과 "정확히 같은 분"인지 판정
    ▼
 [PC] tesla-sentry on / off 직접 실행
@@ -320,20 +375,18 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 
 시각은 **KST(한국 표준시)** 기준입니다. PC가 KST이므로 별도 시간대 변환은 불필요합니다.
 
-**정시(==) 판정:** crontab이 매분 실행하지만, 현재 시각이 ON/OFF 시각과 *정확히 같은 분*일 때만 실행하므로 상태 파일 없이 하루 1회 동작합니다. 트레이드오프로, 그 1분에 PC가 꺼져 있으면 그날은 건너뜁니다(PC가 상시 켜져 있으면 사실상 문제없음).
+**정시(==) 판정:** timer가 매분 실행하지만, 현재 시각이 ON/OFF 시각과 *정확히 같은 분*일 때만 실행하므로 상태 파일 없이 하루 1회 동작합니다. 트레이드오프로, 그 1분에 PC가 꺼져 있으면 그날은 건너뜁니다(PC가 상시 켜져 있으면 사실상 문제없음).
 
 **상태확인·재시도:** `tesla-sentry on/off`는 명령 후 `vehicle_data`로 실제 감시모드 상태를 확인합니다(5초 간격 최대 3회 읽기 — 반영 지연 흡수). 명령 실패나 상태 불일치면 20초 뒤 다시 시도하며 최대 3회까지 반복합니다. 끝내 원하는 상태가 안 되면 종료코드 1로 끝나고(`[sched] sentry on 실패` 로그), 관측된 실제 상태를 Worker에 보고해 폰 앱에 표시됩니다. 매 상태 확인 결과는 `tesla.log`에 `sentry verify: attempt 1/3 read 1/3: sentry=on (want on)` 형태로 남습니다.
 
-### PC crontab 등록
+### PC 타이머 (systemd timer)
 
-```bash
-( crontab -l 2>/dev/null; echo '* * * * * /home/allen/Projects/tesla/scripts/sentry-schedule-check.sh' ) | crontab -
-```
+매분 판정은 `tesla-sentry-schedule.timer`가 담당합니다. 설치는 [상시 서비스 설치](#상시-서비스-설치-systemd)의 `scripts/install.sh` 한 번이면 됩니다. 예전에 등록해 둔 crontab 줄도 이때 자동으로 정리됩니다.
 
 - 로그: 프로젝트 루트 `tesla.log` (감시모드 스케줄 실행 시 `[sched]` 태그로 기록)
-- 테스트 모드 (실제 명령 실행 없음): `SENTRY_DRY_RUN=1 /path/to/sentry-schedule-check.sh`
+- 테스트 모드 (실제 명령 실행 없음): `SENTRY_DRY_RUN=1 scripts/sentry-schedule-check.sh`
 
-> crontab 줄의 시각은 `* * * * *` (매분)로 고정합니다 — ON/OFF 시각은 KV에서 가져오므로 crontab을 직접 편집하지 않아도 됩니다. 폰에서 시각을 바꾸면 즉시 반영됩니다.
+> 타이머 주기는 매분으로 고정입니다. ON/OFF 시각은 KV에서 가져오므로 타이머를 직접 편집할 필요가 없고, 폰에서 시각을 바꾸면 즉시 반영됩니다.
 
 ### Worker 배포
 
@@ -410,23 +463,10 @@ npx wrangler pages deploy webapp --project-name=tesla-afterblow --branch=main
 
 #### 2. PC (구독 데몬)
 
-`scripts/`의 스크립트와 서비스 파일을 사용합니다.
-
-**먼저 `scripts/tesla-afterblow.service`를 본인 환경에 맞게 수정하세요.** 기본값은 `allen` 사용자와 `/home/allen/Projects/tesla` 경로로 하드코딩돼 있으므로, 다른 PC에서는 세 줄을 바꿔야 합니다:
-
-```ini
-User=<본인-리눅스-사용자>
-Environment=HOME=/home/<본인-리눅스-사용자>     # tesla-sentry가 ~/.config/tesla-sentry 를 찾는 데 필요
-ExecStart=<저장소-절대경로>/scripts/afterblow-listener.sh
-```
-
-그 다음 설치합니다:
+구독 데몬(`tesla-afterblow.service`)은 [상시 서비스 설치](#상시-서비스-설치-systemd)의 `scripts/install.sh`가 감시모드 타이머와 함께 설치합니다. 사용자·경로는 자동으로 채워지므로 유닛 파일을 손으로 고칠 필요가 없습니다.
 
 ```bash
-chmod +x scripts/afterblow-listener.sh scripts/afterblow-run.sh
-sudo cp scripts/tesla-afterblow.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now tesla-afterblow
+scripts/install.sh
 systemctl status tesla-afterblow --no-pager   # active (running) 확인
 ```
 
@@ -437,9 +477,9 @@ systemctl status tesla-afterblow --no-pager   # active (running) 확인
 | `scripts/afterblow-lib.sh` | 메시지 파싱 공통 함수 (`listener`·`run`이 함께 사용) |
 | `scripts/afterblow-listener.sh` | ntfy 토픽 상시 구독(자동 재접속) → 메시지 수신 시 핸들러 호출 |
 | `scripts/afterblow-run.sh` | 메시지의 분/환기로 `tesla-sentry afterblow` 실행 |
-| `scripts/tesla-afterblow.service` | 부팅 자동시작 + 죽으면 자동 재시작 (`HOME` 지정 — 설정 디렉터리 탐색에 필요) |
+| `scripts/systemd/tesla-afterblow.service` | 유닛 템플릿 — 부팅 자동시작 + 죽으면 자동 재시작 (`HOME` 지정 — 설정 디렉터리 탐색에 필요). `install.sh`가 치환해 설치 |
 
-> 토픽 URL은 `afterblow-listener.sh` 상단의 `TOPIC_URL`을, 서비스의 사용자/경로는 `tesla-afterblow.service`를 본인 환경에 맞게 수정하세요.
+> 토픽 URL은 `afterblow-listener.sh` 상단의 `TOPIC_URL`을 본인 환경에 맞게 수정하세요.
 
 ### 메시지 형식 및 설정값
 
@@ -461,7 +501,7 @@ systemctl status tesla-afterblow --no-pager   # active (running) 확인
 |---|---|---|
 | `DEBOUNCE` | `60` | 이 시간(초) 안의 재트리거는 무시 — 버튼을 연속으로 눌러도 중복 실행 방지. |
 
-스크립트 수정은 데몬 재시작 없이 다음 트리거부터 자동 반영됩니다(핸들러를 매번 새로 실행하므로). 단, `tesla-afterblow.service` 파일을 바꾼 경우에만 `sudo systemctl daemon-reload && sudo systemctl restart tesla-afterblow`가 필요합니다.
+`afterblow-run.sh` 수정은 데몬 재시작 없이 다음 트리거부터 자동 반영됩니다(핸들러를 매번 새로 실행하므로). `afterblow-listener.sh`·`afterblow-lib.sh`(리스너가 시작할 때 한 번 읽음)나 `scripts/systemd/`의 유닛 템플릿을 바꾼 경우에는 `scripts/install.sh`를 다시 실행하세요(유닛 갱신 + 재시작).
 
 ### 테스트
 

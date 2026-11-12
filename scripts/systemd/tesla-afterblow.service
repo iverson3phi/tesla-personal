@@ -1,3 +1,5 @@
+# 템플릿 — scripts/install.sh 가 @USER@ @HOME@ @ROOT@ 를 치환해 /etc/systemd/system 에 설치한다.
+# 직접 복사하지 말 것(자리표시자가 그대로 남는다).
 [Unit]
 Description=Tesla after-blow ntfy listener
 After=network-online.target
@@ -5,10 +7,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=allen
+User=@USER@
 # tesla-sentry는 설정을 ~/.config/tesla-sentry 에서 찾으므로 HOME이 필요하다.
-Environment=HOME=/home/allen
-ExecStart=/home/allen/Projects/tesla/scripts/afterblow-listener.sh
+Environment=HOME=@HOME@
+ExecStart=@ROOT@/scripts/afterblow-listener.sh
 Restart=always
 RestartSec=5
 

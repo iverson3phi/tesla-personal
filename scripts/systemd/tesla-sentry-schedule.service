@@ -1,0 +1,21 @@
+# 템플릿 — scripts/install.sh 가 @USER@ @HOME@ @ROOT@ 를 치환해 /etc/systemd/system 에 설치한다.
+# tesla-sentry-schedule.timer 가 매분 이 서비스를 실행한다(직접 enable 하지 않는다).
+[Unit]
+Description=Tesla sentry schedule check (KV 스케줄 판정 -> tesla-sentry on/off)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+# tesla-sentry는 설정을 ~/.config/tesla-sentry 에서 찾으므로 HOME이 필요하다.
+Environment=HOME=@HOME@
+ExecStart=@ROOT@/scripts/sentry-schedule-check.sh
+# on/off는 상태확인·재시도 포함 최대 7분(setCommandTimeout) + 상태 보고 10초.
+# oneshot 기본값은 무제한이라, 행(hang)이 나면 이후 매분 실행이 전부 막히므로 상한을 둔다.
+TimeoutStartSec=10min
+# 매분 실행되므로 PID1의 Starting/Finished(info) 메시지가 journal을 채우지 않게 notice로 거른다.
+# 실패 메시지(warning)는 남는다. 판정·실행 로그는 tesla.log 의 [sched] 태그로 남는다.
+LogLevelMax=notice
+# 스크립트의 stdout/stderr(=tesla.log에 못 남긴 예외 메시지)는 위 필터에 걸리지 않게 warning으로 올린다.
+SyslogLevel=warning

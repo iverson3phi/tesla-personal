@@ -10,7 +10,7 @@ to_min() {
 }
 
 # sentry_should_fire <hhmm> <target> -> 현재 시각이 목표 시각과 같으면 return 0.
-#   crontab이 매분 실행하므로, 목표 분에만 정확히 한 번 매치된다(상태 가드 불필요).
+#   systemd timer가 매분 실행하므로, 목표 분에만 정확히 한 번 매치된다(상태 가드 불필요).
 sentry_should_fire() {
 	[ "$(to_min "$1")" -eq "$(to_min "$2")" ]
 }

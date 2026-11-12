@@ -1,0 +1,15 @@
+# scripts/install.sh 가 /etc/systemd/system 에 설치한다. 같은 이름의 .service 를 실행한다.
+[Unit]
+Description=Run tesla-sentry-schedule.service every minute
+
+[Timer]
+# 매분 0초. sentry-schedule-check.sh는 "정확히 같은 분(==)"일 때만 동작하므로
+# 실행이 다음 분으로 밀리면 그날은 건너뛴다 — AccuracySec 기본값(1min)은 실행을
+# 최대 1분 늦출 수 있어 1s로 좁힌다.
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+# Persistent= 는 쓰지 않는다: 놓친 분을 나중에 실행해도 == 판정에 걸리지 않아 의미가 없다.
+# 이전 실행이 아직 돌고 있으면 systemd가 새로 시작하지 않는다(중복 실행 없음).
+
+[Install]
+WantedBy=timers.target
