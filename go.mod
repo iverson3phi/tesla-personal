@@ -1,6 +1,6 @@
 module tesla-sentry
 
-go 1.23
+go 1.23.0
 
 require github.com/teslamotors/vehicle-command v0.4.1
 

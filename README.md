@@ -6,7 +6,7 @@ Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(S
 
 ## 사전 준비물
 
-- **Go 1.23 이상** — `go version`이 `go1.23` 이상을 출력해야 합니다
+- **Go 1.21 이상** — 모듈은 Go 1.23.0을 요구하지만, 설치된 Go가 그보다 낮으면 첫 빌드 때 go1.23.0 툴체인을 자동으로 내려받아 씁니다(인터넷 필요, Ubuntu 24.04 기본 `golang-go` 1.22도 OK)
 - **테슬라 계정** — 계정에 차량이 등록되어 있어야 합니다
 - **Cloudflare 계정** (무료) — 공개키 파일 하나를 HTTPS로 호스팅하는 데 사용합니다 (아래 3단계에서 설명). 애프터블로우 PWA 앱도 같은 Cloudflare Pages에 올립니다.
 - **Node.js / npm** — Wrangler CLI(공개키·PWA 배포)에 필요합니다. Ubuntu 기준 `sudo apt-get install -y nodejs npm`
