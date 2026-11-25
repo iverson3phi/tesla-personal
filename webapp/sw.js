@@ -1,10 +1,11 @@
-const CACHE = 'afterblow-v4';
+const CACHE = 'afterblow-v6';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './message.js',
+  './sentry.js',
   './manifest.json',
   './icon.svg',
   './icon-192.png',

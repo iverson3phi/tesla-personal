@@ -1,5 +1,7 @@
 import { buildMessage, buildCancelMessage } from './message.js';
-import { isValidHHMM, buildSchedulePayload, buildSentryStatusMessage } from './sentry.js';
+import {
+  MAX_SLOTS, slotsFromSchedule, validateSlots, buildSchedulePayload, buildSentryStatusMessage,
+} from './sentry.js';
 
 const TOPIC_URL = 'https://ntfy.sh/tesla-ab-9f3k7q2zx8m';
 
@@ -67,8 +69,9 @@ async function triggerCancel() {
 cancelBtn.addEventListener('click', triggerCancel);
 
 const sentryEnabled = document.getElementById('sentryEnabled');
-const sentryOn = document.getElementById('sentryOn');
-const sentryOff = document.getElementById('sentryOff');
+const sentrySlotsEl = document.getElementById('sentrySlots');
+const sentryAdd = document.getElementById('sentryAdd');
+const slotTpl = document.getElementById('slotTpl');
 const sentrySave = document.getElementById('sentrySave');
 const sentryStatusEl = document.getElementById('sentryStatus');
 
@@ -78,9 +81,34 @@ function setSentryStatus(text, kind) {
 }
 
 function applySchedule(s) {
-  sentryOn.value = s.onTime;
-  sentryOff.value = s.offTime;
+  sentrySlotsEl.replaceChildren();
+  const slots = slotsFromSchedule(s);
+  (slots.length ? slots : [{}]).forEach(addSlotRow);
   sentryEnabled.checked = !!s.enabled;
+}
+
+// 세트 개수에 따라 추가 버튼(최대치)·삭제 버튼(마지막 1개는 못 지움)을 갱신.
+function refreshSlotButtons() {
+  const rows = sentrySlotsEl.querySelectorAll('.slot');
+  sentryAdd.disabled = rows.length >= MAX_SLOTS;
+  rows.forEach((li) => { li.querySelector('.del').disabled = rows.length <= 1; });
+}
+
+function addSlotRow({ onTime = '', offTime = '' } = {}) {
+  const li = slotTpl.content.firstElementChild.cloneNode(true);
+  li.querySelector('.on').value = onTime;
+  li.querySelector('.off').value = offTime;
+  li.querySelector('.del').addEventListener('click', () => { li.remove(); refreshSlotButtons(); });
+  sentrySlotsEl.append(li);
+  refreshSlotButtons();
+  return li;
+}
+
+function readSlots() {
+  return [...sentrySlotsEl.querySelectorAll('.slot')].map((li) => ({
+    onTime: li.querySelector('.on').value,
+    offTime: li.querySelector('.off').value,
+  }));
 }
 
 const sentryStateEl = document.getElementById('sentryState');
@@ -89,6 +117,8 @@ function renderSentryState(s) {
   if (!sentryStateEl) return; // 현재상태 UI를 숨긴 경우 no-op (기능 코드는 유지)
   if (!s || !s.lastState) {
     sentryStateEl.textContent = '상태 미상';
+sentryAdd.addEventListener('click', () => addSlotRow().querySelector('.on').focus());
+
     return;
   }
   const label = s.lastState === 'on' ? 'ON' : 'OFF';
@@ -112,13 +142,13 @@ async function loadSchedule() {
 }
 
 async function saveSchedule() {
-  if (!isValidHHMM(sentryOn.value) || !isValidHHMM(sentryOff.value)) {
-    setSentryStatus('시각 형식이 올바르지 않습니다', 'err');
+  const slots = readSlots();
+  const error = validateSlots(slots);
+  if (error) {
+    setSentryStatus(error, 'err');
     return;
   }
-  const payload = buildSchedulePayload({
-    onTime: sentryOn.value, offTime: sentryOff.value, enabled: sentryEnabled.checked,
-  });
+  const payload = buildSchedulePayload({ slots, enabled: sentryEnabled.checked });
   sentrySave.disabled = true;
   setSentryStatus('저장 중…', 'pending');
   try {

@@ -94,3 +94,32 @@ h1 { margin: 0; font-size: 1.7rem; font-weight: 700; letter-spacing: .5px; }
   padding: 8px 12px;
 }
 #sentrySave { margin-top: 20px; }
+
+/* 감시모드 ON/OFF 시간 세트 목록 */
+.slot-head {
+  display: grid; grid-template-columns: 1fr .8rem 1fr 34px; gap: 6px;
+  color: var(--muted); font-size: .85rem; margin-bottom: 6px;
+}
+.slot-head span:first-child { grid-column: 1; }
+.slot-head span:last-child { grid-column: 3; }
+.slots { list-style: none; margin: 0; padding: 0; }
+.slot {
+  display: grid; grid-template-columns: 1fr .8rem 1fr 34px; gap: 6px;
+  align-items: center; margin-bottom: 10px;
+}
+.slot .time { width: 100%; min-width: 0; font-size: 1rem; padding: 8px 4px 8px 8px; }
+.slot .time::-webkit-calendar-picker-indicator { margin-left: 2px; }
+.slot .dash { color: var(--muted); text-align: center; }
+.del {
+  height: 38px; padding: 0; border: 1px solid #475569; border-radius: 10px;
+  background: transparent; color: var(--muted); font-size: 1rem; cursor: pointer;
+}
+.del:active { background: #334155; }
+.del:disabled { opacity: .3; cursor: default; }
+.add {
+  width: 100%; padding: 12px; margin-top: 2px;
+  font-size: 1rem; font-weight: 600; color: var(--fg);
+  background: transparent; border: 1px dashed #475569; border-radius: 12px; cursor: pointer;
+}
+.add:active { background: #334155; }
+.add:disabled { opacity: .4; cursor: default; }

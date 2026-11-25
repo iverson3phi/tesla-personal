@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SCHEDULE, kstParts, decideActions, validateScheduleInput, validateStateInput,
+  DEFAULT_SCHEDULE, kstParts, decideActions, normalizeState, validateScheduleInput, validateStateInput,
 } from './schedule.js';
 
 const KV_KEY = 'sentry-schedule';
@@ -20,7 +20,7 @@ async function readState(env) {
   const raw = await env.SCHEDULE_KV.get(KV_KEY);
   if (!raw) return { ...DEFAULT_SCHEDULE };
   try {
-    return { ...DEFAULT_SCHEDULE, ...JSON.parse(raw) };
+    return normalizeState(JSON.parse(raw));
   } catch {
     return { ...DEFAULT_SCHEDULE };
   }
@@ -31,8 +31,7 @@ async function writeState(env, state) {
 }
 
 async function publishNtfy(env, text) {
-  // fetch는 네트워크 실패에만 reject하므로 non-2xx(429/5xx 등)도 명시적으로 던져
-  // scheduled()가 lastOn/lastOff를 기록하지 않게 한다 → 그날 다음 분에 재시도.
+  // fetch는 네트워크 실패에만 reject하므로 non-2xx(429/5xx 등)도 명시적으로 던져 로그에 남긴다.
   const res = await fetch(env.NTFY_URL, { method: 'POST', body: text });
   if (!res.ok) throw new Error(`ntfy publish failed: HTTP ${res.status}`);
 }
@@ -85,27 +84,10 @@ export default {
     try {
       const state = await readState(env);
       const now = kstParts(Date.now());
+      // 정시 판정(PC 타이머와 동일 규칙) → 상태 기록·KV 쓰기 없음.
       const { fireOn, fireOff } = decideActions(state, now);
-      let changed = false;
-      if (fireOn) {
-        try {
-          await publishNtfy(env, 'sentry on');
-          state.lastOn = now.today; // 발행 성공 후에만 기록 → 실패 시 그날 재시도
-          changed = true;
-        } catch (e) {
-          console.error('publish sentry on failed:', e);
-        }
-      }
-      if (fireOff) {
-        try {
-          await publishNtfy(env, 'sentry off');
-          state.lastOff = now.today;
-          changed = true;
-        } catch (e) {
-          console.error('publish sentry off failed:', e);
-        }
-      }
-      if (changed) await writeState(env, state); // 발행 성공 시에만 KV 쓰기(과금 보호)
+      if (fireOn) await publishNtfy(env, 'sentry on').catch((e) => console.error('publish sentry on failed:', e));
+      if (fireOff) await publishNtfy(env, 'sentry off').catch((e) => console.error('publish sentry off failed:', e));
     } catch (e) {
       console.error('scheduled run failed:', e);
     }

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # systemd timer(tesla-sentry-schedule.timer)가 매분 0초에 실행한다. 설치: scripts/install.sh
-# Worker(KV)에서 ON/OFF 시각·활성 토글을 읽어, 현재 KST 시각이 목표 시각과
-# "정확히 같은 분"이면 tesla-sentry on/off 를 실행한다. 시각은 폰 PWA에서 KV로
-# 설정되므로 이 스크립트(타이머)는 고정이다 — "시각 하드코딩" 문제가 없다.
+# Worker(KV)에서 ON/OFF 시각 세트(slots, 여러 개)·활성 토글을 읽어, 현재 KST 분이
+# 슬롯 합집합의 경계(꺼짐→켜짐 / 켜짐→꺼짐)이면 tesla-sentry on/off 를 실행한다.
+# 시각은 폰 PWA에서 KV로 설정되므로 이 스크립트(타이머)는 고정이다.
 #
-# 정시(==) 판정이라 상태 가드가 필요 없다(그 분에만 매치되어 1회 실행).
+# 정시 판정이라 상태 가드가 필요 없다(경계 분에만 매치되어 1회 실행).
 # 트레이드오프: 그 1분에 PC가 꺼져 있으면 그날은 건너뛴다.
 #
 # Cloudflare Worker Cron 장애(2026-06) 우회: 매분 타이머를 PC가 담당한다
@@ -43,24 +43,27 @@ flock -n 9 || exit 0
 # KV에서 현재 스케줄 읽기 (GET은 공개라 토큰 불필요).
 json="$(curl -s --max-time 10 "$SENTRY_API")" || { log "KV GET 실패(네트워크)"; exit 0; }
 enabled="$(printf '%s' "$json" | jq -r '.enabled // empty' 2>/dev/null)"
-onTime="$(printf '%s' "$json" | jq -r '.onTime // empty' 2>/dev/null)"
-offTime="$(printf '%s' "$json" | jq -r '.offTime // empty' 2>/dev/null)"
+# slots 배열을 "HH:MM-HH:MM" 줄로. 구버전 Worker(onTime/offTime 단일 세트)도 받아준다.
+mapfile -t raw_slots < <(printf '%s' "$json" | jq -r '
+	(.slots // (if .onTime then [{onTime, offTime}] else [] end))[]
+	| "\(.onTime)-\(.offTime)"' 2>/dev/null)
 
+# 형식이 이상한 슬롯은 로그만 남기고 건너뛴다.
+HHMM='([01][0-9]|2[0-3]):[0-5][0-9]'
+slots=()
+for s in "${raw_slots[@]}"; do
+	if [[ "$s" =~ ^${HHMM}-${HHMM}$ ]]; then slots+=("$s"); else log "슬롯 형식 이상: '$s'"; fi
+done
 # 응답이 비정상이면 조용히 종료(다음 분에 재시도).
-[[ "$onTime"  =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { log "onTime 형식 이상: '$onTime'"; exit 0; }
-[[ "$offTime" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { log "offTime 형식 이상: '$offTime'"; exit 0; }
+[ "${#slots[@]}" -gt 0 ] || { log "유효한 슬롯 없음 (응답 이상)"; exit 0; }
 
 # 마스터 토글: 자동화 정지면 아무것도 안 함(강제 OFF 아님).
 [ "$enabled" = "true" ] || exit 0
 
 hhmm="$(date +%H:%M)"
 
-if sentry_should_fire "$hhmm" "$onTime"; then
-	log "SENTRY ON 트리거 (now=$hhmm onTime=$onTime)"
-	run_sentry on && log "sentry on 완료" || log "sentry on 실패"
-fi
-
-if sentry_should_fire "$hhmm" "$offTime"; then
-	log "SENTRY OFF 트리거 (now=$hhmm offTime=$offTime)"
-	run_sentry off && log "sentry off 완료" || log "sentry off 실패"
+action="$(sentry_action "$hhmm" "${slots[@]}")"
+if [ -n "$action" ]; then
+	log "SENTRY ${action^^} 트리거 (now=$hhmm slots=${slots[*]})"
+	run_sentry "$action" && log "sentry $action 완료" || log "sentry $action 실패"
 fi

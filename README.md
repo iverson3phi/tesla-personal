@@ -1,6 +1,6 @@
 # tesla-sentry
 
-Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 직접 실행하거나, 휴대폰 PWA 앱에서 ON/OFF 시각을 설정하면 PC의 systemd timer(매분 실행)가 Cloudflare KV에서 시각을 읽어 KST 기준으로 판정해 자동으로 동작시킵니다.
+Tesla Fleet API를 사용해 정해진 일정에 따라 테슬라 감시모드(Sentry Mode)를 자동으로 켜고 끕니다. 리눅스 PC에서 바이너리를 직접 실행하거나, 휴대폰 PWA 앱에서 ON/OFF 시각 세트(여러 개 가능)를 설정하면 PC의 systemd timer(매분 실행)가 Cloudflare KV에서 시각을 읽어 KST 기준으로 판정해 자동으로 동작시킵니다.
 
 추가로, 주차 후 휴대폰 PWA 앱 버튼 한 번으로 에어컨 증발기를 말려 곰팡이·냄새를 예방하는 **애프터블로우(after-blow)** 자동화도 지원합니다 (아래 [애프터블로우 자동화](#애프터블로우-자동화) 참고).
 
@@ -328,7 +328,7 @@ journalctl -u tesla-afterblow -u tesla-sentry-schedule -f      # 서비스 실�
 
 > ⚠️ **한 대에서만 실행하세요.** 다른 PC에서도 서비스가 돌고 있으면 차량 명령이 중복 실행되고, 테슬라의 refresh token 회전 때문에 한쪽 토큰이 무효화됩니다. PC를 옮길 때는 기존 PC에서 `scripts/install.sh --uninstall`을 먼저 실행한 뒤 `~/.config/tesla-sentry/`를 옮기세요.
 
-> ⚠️ **절전(서스펜드)을 끄세요.** 감시모드는 정시(==) 판정이라 그 1분에 PC가 잠들어 있으면 그날은 건너뜁니다. 상시 켜두는 데스크톱이라면:
+> ⚠️ **절전(서스펜드)을 끄세요.** 감시모드는 정시 판정이라 그 1분에 PC가 잠들어 있으면 그 ON/OFF는 건너뜁니다. 상시 켜두는 데스크톱이라면:
 > ```bash
 > sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 > ```
@@ -354,28 +354,34 @@ tesla-sentry afterblow 3 vent     # 3분 + 건조 중 창문 환기
 
 ## 감시모드 스케줄 (PWA + PC systemd timer)
 
-감시모드 ON/OFF 시각은 **휴대폰 PWA 앱**의 "감시 모드(Sentry)" 섹션에서 설정합니다. 시각은 Cloudflare KV에 저장되어 기기 간 자동으로 동기화됩니다.
+감시모드 ON/OFF 시각은 **휴대폰 PWA 앱**의 "감시 모드(Sentry)" 섹션에서 설정합니다. **"+ 시간 세트 추가"** 로 ON/OFF 세트를 최대 8개까지 넣을 수 있습니다(예: 05:30→08:00, 18:00→23:00). 시각은 Cloudflare KV에 저장되어 기기 간 자동으로 동기화됩니다.
 
 > **아키텍처 변경 (2026-06):** Cloudflare Cron Trigger 플랫폼 장애로 `scheduled()` 핸들러가 실행되지 않는 문제가 발생했습니다. Worker·KV·PWA는 변경 없이 그대로 유지하고, **타이머 역할만 PC로 이전**했습니다(처음엔 crontab, 현재는 systemd timer). Worker의 cron 트리거는 이중 실행 방지를 위해 비활성화(`crons = []`)했습니다.
 
 ### 동작 구조
 
 ```
-[휴대폰] PWA 앱 "감시 모드(Sentry)" 섹션 — ON 시각, OFF 시각, 활성화 토글 설정
+[휴대폰] PWA 앱 "감시 모드(Sentry)" 섹션 — ON/OFF 시간 세트 목록(최대 8개), 활성화 토글 설정
    │  (HTTP PUT → Cloudflare Worker API)
    ▼
 [Cloudflare KV] 스케줄 저장 (단일 진실 공급원, 기기 간 자동 동기화)
    │  (HTTP GET ← PC가 매분 조회)
    ▼
 [PC systemd timer — 매분 0초] sentry-schedule-check.sh
-   │  KV GET → 현재 KST 시각이 ON/OFF 시각과 "정확히 같은 분"인지 판정
+   │  KV GET → 현재 KST 분이 세트 합집합의 경계(켜짐↔꺼짐)인지 판정
    ▼
 [PC] tesla-sentry on / off 직접 실행
 ```
 
 시각은 **KST(한국 표준시)** 기준입니다. PC가 KST이므로 별도 시간대 변환은 불필요합니다.
 
-**정시(==) 판정:** timer가 매분 실행하지만, 현재 시각이 ON/OFF 시각과 *정확히 같은 분*일 때만 실행하므로 상태 파일 없이 하루 1회 동작합니다. 트레이드오프로, 그 1분에 PC가 꺼져 있으면 그날은 건너뜁니다(PC가 상시 켜져 있으면 사실상 문제없음).
+**여러 세트 판정 규칙:** 각 세트는 `[켜는 시각, 끄는 시각)` 구간이고, 모든 세트 구간의 **합집합**이 "꺼짐→켜짐"으로 바뀌는 분에 `on`, "켜짐→꺼짐"으로 바뀌는 분에 `off`를 실행합니다.
+- 세트가 겹치거나 맞닿으면 이어서 켜 둡니다 — 예: 08:00→12:00 + 10:00→14:00 이면 08:00 ON, 14:00 OFF만 실행(12:00에 끄지 않음).
+- 끄는 시각이 켜는 시각보다 이르면 자정을 넘는 구간입니다 — 예: 22:00→06:00.
+- 켜는 시각과 끄는 시각이 같은 세트는 저장할 수 없습니다.
+- 예전 단일 세트(`onTime`/`offTime`)로 저장된 KV 값은 세트 1개로 자동 변환됩니다.
+
+**정시 판정:** timer가 매분 실행하지만 위 경계 분일 때만 실행하므로 상태 파일 없이 동작합니다. 트레이드오프로, 그 1분에 PC가 꺼져 있으면 그 ON/OFF는 건너뜁니다(PC가 상시 켜져 있으면 사실상 문제없음).
 
 **상태확인·재시도:** `tesla-sentry on/off`는 명령 후 `vehicle_data`로 실제 감시모드 상태를 확인합니다(5초 간격 최대 3회 읽기 — 반영 지연 흡수). 명령 실패나 상태 불일치면 20초 뒤 다시 시도하며 최대 3회까지 반복합니다. 끝내 원하는 상태가 안 되면 종료코드 1로 끝나고(`[sched] sentry on 실패` 로그), 관측된 실제 상태를 Worker에 보고해 폰 앱에 표시됩니다. 매 상태 확인 결과는 `tesla.log`에 `sentry verify: attempt 1/3 read 1/3: sentry=on (want on)` 형태로 남습니다.
 

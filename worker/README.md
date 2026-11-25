@@ -26,7 +26,7 @@ npx wrangler dev
 #   GET:  curl http://localhost:8787/api/sentry-schedule
 #   PUT:  curl -X PUT http://localhost:8787/api/sentry-schedule \
 #           -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
-#           -d '{"onTime":"05:30","offTime":"22:16","enabled":true}'
+#           -d '{"slots":[{"onTime":"05:30","offTime":"08:00"},{"onTime":"18:00","offTime":"23:00"}],"enabled":true}'
 
 # Cron(scheduled) 핸들러 강제 실행
 npx wrangler dev --test-scheduled

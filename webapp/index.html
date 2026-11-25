@@ -52,14 +52,22 @@
       </label>
     </section>
 
-    <section class="row">
-      <span class="label">켜는 시각</span>
-      <input id="sentryOn" type="time" class="time">
-    </section>
-    <section class="row">
-      <span class="label">끄는 시각</span>
-      <input id="sentryOff" type="time" class="time">
-    </section>
+    <!-- ON/OFF 시간 세트 목록. app.js가 template으로 행을 만든다. -->
+    <div class="slot-head">
+      <span>켜는 시각</span><span>끄는 시각</span>
+    </div>
+    <ul id="sentrySlots" class="slots"></ul>
+    <button id="sentryAdd" type="button" class="add">+ 시간 세트 추가</button>
+    <p class="note">겹치는 세트는 이어서 켜 둡니다<br>끄는 시각이 더 이르면 다음 날 꺼집니다</p>
+
+    <template id="slotTpl">
+      <li class="slot">
+        <input type="time" class="time on" aria-label="켜는 시각">
+        <span class="dash">→</span>
+        <input type="time" class="time off" aria-label="끄는 시각">
+        <button type="button" class="del" aria-label="이 세트 삭제">✕</button>
+      </li>
+    </template>
 
     <button id="sentrySave" class="start">설정 저장</button>
     <p id="sentryStatus" class="status"></p>
