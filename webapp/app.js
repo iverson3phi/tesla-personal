@@ -80,13 +80,6 @@ function setSentryStatus(text, kind) {
   sentryStatusEl.className = `status ${kind}`;
 }
 
-function applySchedule(s) {
-  sentrySlotsEl.replaceChildren();
-  const slots = slotsFromSchedule(s);
-  (slots.length ? slots : [{}]).forEach(addSlotRow);
-  sentryEnabled.checked = !!s.enabled;
-}
-
 // 세트 개수에 따라 추가 버튼(최대치)·삭제 버튼(마지막 1개는 못 지움)을 갱신.
 function refreshSlotButtons() {
   const rows = sentrySlotsEl.querySelectorAll('.slot');
@@ -111,14 +104,21 @@ function readSlots() {
   }));
 }
 
+function applySchedule(s) {
+  sentrySlotsEl.replaceChildren();
+  const slots = slotsFromSchedule(s);
+  (slots.length ? slots : [{}]).forEach(addSlotRow);
+  sentryEnabled.checked = !!s.enabled;
+}
+
+sentryAdd.addEventListener('click', () => addSlotRow().querySelector('.on').focus());
+
 const sentryStateEl = document.getElementById('sentryState');
 
 function renderSentryState(s) {
   if (!sentryStateEl) return; // 현재상태 UI를 숨긴 경우 no-op (기능 코드는 유지)
   if (!s || !s.lastState) {
     sentryStateEl.textContent = '상태 미상';
-sentryAdd.addEventListener('click', () => addSlotRow().querySelector('.on').focus());
-
     return;
   }
   const label = s.lastState === 'on' ? 'ON' : 'OFF';
